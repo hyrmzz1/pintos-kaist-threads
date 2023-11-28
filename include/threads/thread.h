@@ -92,6 +92,11 @@ struct thread {
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
 
+
+	int64_t wakeup; // 깨어나야 하는 ticks 값
+
+    
+
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
 
@@ -114,8 +119,13 @@ struct thread {
    Controlled by kernel command-line option "-o mlfqs". */
 extern bool thread_mlfqs;
 
+
 void thread_init (void);
 void thread_start (void);
+
+void thread_sleep(int64_t ticks);	//sleep awake method 추가
+void thread_awake(int64_t ticks);
+
 
 void thread_tick (void);
 void thread_print_stats (void);

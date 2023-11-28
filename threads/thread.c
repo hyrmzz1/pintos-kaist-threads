@@ -28,6 +28,9 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
+static struct list sleep_list;				//sleep list 추가
+
+
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -108,6 +111,7 @@ thread_init (void) {
 	/* Init the globla thread context */
 	lock_init (&tid_lock);
 	list_init (&ready_list);
+	list_init (&sleep_list);					//sleep list 추가
 	list_init (&destruction_req);
 
 	/* Set up a thread structure for the running thread. */
@@ -116,6 +120,52 @@ thread_init (void) {
 	initial_thread->status = THREAD_RUNNING;
 	initial_thread->tid = allocate_tid ();
 }
+
+
+
+
+//thread sleep 함수 추가 
+void
+thread_sleep (int64_t ticks)
+{
+  struct thread *cur;
+  enum intr_level old_level;
+
+  old_level = intr_disable ();	// 인터럽트 off
+  cur = thread_current ();
+  
+  ASSERT (cur != idle_thread);
+
+  cur->wakeup = ticks;			// 일어날 시간을 저장
+  list_push_back (&sleep_list, &cur->elem);	// sleep_list 에 추가
+  thread_block ();				// block 상태로 변경
+
+  intr_set_level (old_level);	// 인터럽트 on
+}
+
+
+
+
+//awake 함수 
+void 
+thread_awake(int64_t ticks)
+{
+  struct list_elem *e = list_begin (&sleep_list);
+
+  while (e != list_end (&sleep_list)){
+    struct thread *t = list_entry (e, struct thread, elem);
+    if (t->wakeup <= ticks){	// 스레드가 일어날 시간이 되었는지 확인
+      e = list_remove (e);	// sleep list 에서 제거
+      thread_unblock (t);	// 스레드 unblock
+    }
+    else 
+      e = list_next (e);
+  }
+}
+
+
+
+
 
 /* Starts preemptive thread scheduling by enabling interrupts.
    Also creates the idle thread. */
@@ -308,6 +358,12 @@ thread_yield (void) {
 	intr_set_level (old_level);
 }
 
+
+
+
+
+
+//이번에 수정해야 할 부분
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
@@ -319,6 +375,20 @@ int
 thread_get_priority (void) {
 	return thread_current ()->priority;
 }
+//추가 함수 thread 우선순위 판단
+//parameter에 void *aux UNUSED 추가?
+
+bool
+thread_compare_priority(const struct list_elem *a, const struct list_elem *b){
+	printf("test");
+	return list_entry(a, struct thread, elem)->priority > list_entry(b, struct thread, elem)->priority;
+}
+
+
+
+
+
+
 
 /* Sets the current thread's nice value to NICE. */
 void
