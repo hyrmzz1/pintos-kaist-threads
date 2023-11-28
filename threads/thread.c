@@ -28,6 +28,9 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
+/* blocked thread 넣을 곳 */
+static struct list sleep_list;
+
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -105,11 +108,12 @@ thread_init (void) {
 	};
 	lgdt (&gdt_ds);
 
-	/* Init the globla thread context */
+	/* Init the global thread context */
 	lock_init (&tid_lock);
 	list_init (&ready_list);
+	list_init (&sleep_list);	// 만든 리스트 초기화
 	list_init (&destruction_req);
-
+	
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread ();
 	init_thread (initial_thread, "main", PRI_DEFAULT);
@@ -243,6 +247,22 @@ thread_unblock (struct thread *t) {
 	list_push_back (&ready_list, &t->elem);
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
+}
+
+void thread_sleep(){	// 매개변수 -> 시간. (int형)
+	// thread_current가 현재 쓰레드에 대한 정보를 줌
+	// 재울 쓰레드 불러오기
+	// 쓰레드 ready_list에서 제거
+	// 제거한 쓰레드 sleep_list에 추가
+	// thread_block() => 재우기 완료
+	// 인터럽트 - 함수 실행 전엔 intr_disable(), 실행 후엔 intr_enable()
+}
+
+void thread_awake(){	// 매개변수 -> 시간
+	// 일어날 시간 된 쓰레드 깨우기 -> sleep_list에서 tick+start가 시간(parameter) 이하인 쓰레드를 찾기 (=> element 탐색)
+	// element를 탐색하면서 thread로 변환
+	// 조건에 맞는 thread를 ready_list로 넣음
+	// thread_unblock()
 }
 
 /* Returns the name of the running thread. */

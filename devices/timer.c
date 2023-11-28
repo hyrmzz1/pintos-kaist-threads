@@ -9,7 +9,7 @@
 #include "threads/thread.h"
 
 /* See [8254] for hardware details of the 8254 timer chip. */
-
+// TIMER_FREQ 최소값 및 최소값 설정
 #if TIMER_FREQ < 19
 #error 8254 timer requires TIMER_FREQ >= 19
 #endif
@@ -46,6 +46,7 @@ timer_init (void) {
 }
 
 /* Calibrates loops_per_tick, used to implement brief delays. */
+// 짧은 지연을 구현하는 데 사용되는 loops_per_tick을 보정(조정)
 void
 timer_calibrate (void) {
 	unsigned high_bit, test_bit;
@@ -74,27 +75,34 @@ timer_calibrate (void) {
 int64_t
 timer_ticks (void) {
 	enum intr_level old_level = intr_disable ();
-	int64_t t = ticks;
-	intr_set_level (old_level);
+	int64_t t = ticks;	// ticks(OS 부팅 이후 타이머 틱 수)의 현재값 저장
+	intr_set_level (old_level);	// old_level에 저장된 이전 인터럽트 상태 복원
 	barrier ();
-	return t;
+	return t;	// 현재 타이머 틱 수 반환
 }
 
 /* Returns the number of timer ticks elapsed since THEN, which
    should be a value once returned by timer_ticks(). */
 int64_t
-timer_elapsed (int64_t then) {
-	return timer_ticks () - then;
+timer_elapsed (int64_t then) {	// 특정 시점 이후 경과된 타이머 틱 수 계산
+	return timer_ticks () - then;	// 현재 타이머 틱 수 - 이전 타이머 틱 수. (경과된 시간을 타이머 틱 단위로 나타냄)
 }
 
 /* Suspends execution for approximately TICKS timer ticks. */
 void
 timer_sleep (int64_t ticks) {
-	int64_t start = timer_ticks ();
+	int64_t start = timer_ticks ();	// 함수 호출될 때 현재 타이머 틱 수 기록 (= 시작, 현재 시간)
 
-	ASSERT (intr_get_level () == INTR_ON);
-	while (timer_elapsed (start) < ticks)
-		thread_yield ();
+	ASSERT (intr_get_level () == INTR_ON);	// 인터럽트 활성화되도록
+
+	/* busy waiting 방식 */
+	/*
+	while (timer_elapsed (start) < ticks)	// 경과 시간이 지정된 ticks보다 작으면 아직 깨울 시간 안됐다는 것.
+		thread_yield ();	// running status => ready status. CPU 양도, 다른 스레드 실행되도록 함.
+	*/
+
+	/* sleep-wakeup 방식 (thread_yield() & do_schedule() 대체) */
+	// start + tick => 깨울 시간
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -126,6 +134,8 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
 	thread_tick ();
+	// sleep list와 the global tick 체크하고 깨울 쓰레드 찾아서 ready list로 옮기고, global tick 업데이트 
+	// awake ~.~
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
