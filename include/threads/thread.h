@@ -91,6 +91,7 @@ struct thread {
 	enum thread_status status;          /* Thread state. */
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
+	int64_t wakeup_tick;						/* 깨울 시간 (ticks 값) */
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
@@ -125,6 +126,9 @@ tid_t thread_create (const char *name, int priority, thread_func *, void *);
 
 void thread_block (void);	// sleep 상태
 void thread_unblock (struct thread *);	// wakeup 상태
+
+void thread_sleep(int64_t);
+void thread_awake(int64_t);
 
 struct thread *thread_current (void);
 tid_t thread_tid (void);

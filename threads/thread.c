@@ -249,20 +249,38 @@ thread_unblock (struct thread *t) {
 	intr_set_level (old_level);
 }
 
-void thread_sleep(){	// 매개변수 -> 시간. (int형)
-	// thread_current가 현재 쓰레드에 대한 정보를 줌
-	// 재울 쓰레드 불러오기
-	// 쓰레드 ready_list에서 제거
-	// 제거한 쓰레드 sleep_list에 추가
-	// thread_block() => 재우기 완료
-	// 인터럽트 - 함수 실행 전엔 intr_disable(), 실행 후엔 intr_enable()
+void thread_sleep(int64_t ticks){	// 매개변수 -> 시간 => int
+	struct thread *curr = thread_current ();	// thread_current가 현재 쓰레드에 대한 정보를 줌
+	enum intr_level old_level;	// ???
+
+	ASSERT (!intr_context ());	// 외부 인터럽트 수행 중이라면 종료. 외부 인터럽트 수행 중에는 다른 작업들 이루어지면 안됨.
+
+	old_level = intr_disable ();	// 인터럽트 OFF
+	if (curr != idle_thread){	// 현재 쓰레드가 idle thread가 아니라면
+		curr->wakeup_tick = ticks;	// 깨울 시간 저장 (ticks)
+		list_push_back (&sleep_list, &curr->elem);	// 제거한 쓰레드 sleep_list에 추가
+		// ready list에선 언제 제거 ??
+	}	
+	thread_block();	// block status로 변경 (재우기 완료). do_schedule(THREAD_BLOCKED); 도 되나 ??
+	intr_set_level (old_level);	// 인터럽트 ON
 }
 
-void thread_awake(){	// 매개변수 -> 시간
-	// 일어날 시간 된 쓰레드 깨우기 -> sleep_list에서 tick+start가 시간(parameter) 이하인 쓰레드를 찾기 (=> element 탐색)
-	// element를 탐색하면서 thread로 변환
-	// 조건에 맞는 thread를 ready_list로 넣음
-	// thread_unblock()
+void thread_awake(int64_t ticks){	// 매개변수 -> 시간 => int
+	struct thread *t;
+	struct list_elem *now = list_begin(&sleep_list);	// 왜 주소값을 넣음 ??
+
+	while (now != list_end(&sleep_list)){	// sleep list에 쓰레드 하나 잇는 경우는 ??
+		t = list_entry(now, struct thread, elem);	// sleep list 순회. list entry 리턴값은 thread 구조체
+		
+		/* 쓰레드 깨울 시간 확인 */
+		if (t->wakeup_tick <= ticks){	// 깨울 시간이 현재 시간 이하라면 깨움
+			now = list_remove(&t->elem);	// sleep_list에서 삭제
+			thread_unblock(t);	// unblock status로 변경
+		}
+		else {	// 안깨움 (더 재움)
+			now = list_next(now);	// 다음 쓰레드 순회하도록 now 갱신
+		}
+	}
 }
 
 /* Returns the name of the running thread. */
@@ -319,13 +337,13 @@ thread_yield (void) {
 	struct thread *curr = thread_current ();
 	enum intr_level old_level;
 
-	ASSERT (!intr_context ());
+	ASSERT (!intr_context ());	// 외부 인터럽트 수행 중이라면 종료. 외부 인터럽트 수행 중에는 다른 작업들 이루어지면 안됨.
 
-	old_level = intr_disable ();
-	if (curr != idle_thread)
-		list_push_back (&ready_list, &curr->elem);
-	do_schedule (THREAD_READY);
-	intr_set_level (old_level);
+	old_level = intr_disable ();	// 인터럽트 OFF
+	if (curr != idle_thread)	// 현재 쓰레드가 idle thread가 아니라면
+		list_push_back (&ready_list, &curr->elem);	// ready list에 넣고
+	do_schedule (THREAD_READY);	// ready status로 바꿔줌
+	intr_set_level (old_level);	// 인터럽트 ON
 }
 
 /* Sets the current thread's priority to NEW_PRIORITY. */

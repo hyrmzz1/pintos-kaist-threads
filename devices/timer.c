@@ -75,7 +75,7 @@ timer_calibrate (void) {
 int64_t
 timer_ticks (void) {
 	enum intr_level old_level = intr_disable ();
-	int64_t t = ticks;	// ticks(OS 부팅 이후 타이머 틱 수)의 현재값 저장
+	int64_t t = ticks;	// ticks(OS 부팅 이후 타이머 틱 수)의 현재값 저장. 계속 올라감.
 	intr_set_level (old_level);	// old_level에 저장된 이전 인터럽트 상태 복원
 	barrier ();
 	return t;	// 현재 타이머 틱 수 반환
@@ -90,19 +90,19 @@ timer_elapsed (int64_t then) {	// 특정 시점 이후 경과된 타이머 틱 �
 
 /* Suspends execution for approximately TICKS timer ticks. */
 void
-timer_sleep (int64_t ticks) {
-	int64_t start = timer_ticks ();	// 함수 호출될 때 현재 타이머 틱 수 기록 (= 시작, 현재 시간)
-
-	ASSERT (intr_get_level () == INTR_ON);	// 인터럽트 활성화되도록
-
+timer_sleep (int64_t ticks) {	// ticks만큼 재운다
 	/* busy waiting 방식 */
 	/*
+	int64_t start = timer_ticks ();	// 함수 호출될 때 현재 타이머 틱 수 기록 (= 시작, 현재 시간)
+
+	ASSERT (intr_get_level () == INTR_ON);	// 인터럽트 활성화되어있는지 확인
 	while (timer_elapsed (start) < ticks)	// 경과 시간이 지정된 ticks보다 작으면 아직 깨울 시간 안됐다는 것.
 		thread_yield ();	// running status => ready status. CPU 양도, 다른 스레드 실행되도록 함.
 	*/
 
 	/* sleep-wakeup 방식 (thread_yield() & do_schedule() 대체) */
-	// start + tick => 깨울 시간
+	int64_t start = timer_ticks ();	// 함수 호출될 때 현재 타이머 틱 수(= 시작, 현재 시간) 기록.
+	thread_sleep(start + ticks);	// 깨울 시간을 parameter로
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -131,11 +131,10 @@ timer_print_stats (void) {
 
 /* Timer interrupt handler. */
 static void
-timer_interrupt (struct intr_frame *args UNUSED) {
-	ticks++;
-	thread_tick ();
-	// sleep list와 the global tick 체크하고 깨울 쓰레드 찾아서 ready list로 옮기고, global tick 업데이트 
-	// awake ~.~
+timer_interrupt (struct intr_frame *args UNUSED) {	// 매 tick마다 해당 tick에 깨워야 할 쓰레드들 깨우기
+	ticks++;	// 시간 계속 흐르니까 틱도 계속 증가. global tick?
+	thread_tick ();	// OS 부팅 이후 경과한 타이머 틱 수 반환
+	thread_awake (ticks);	// sleep list와 the global tick 체크하고 깨울 쓰레드 찾아서 ready list로 옮기고, global tick 업데이트
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
@@ -148,7 +147,7 @@ too_many_loops (unsigned loops) {
 		barrier ();
 
 	/* Run LOOPS loops. */
-	start = ticks;
+	start = ticks; 
 	busy_wait (loops);
 
 	/* If the tick count changed, we iterated too long. */
