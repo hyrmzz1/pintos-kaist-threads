@@ -131,6 +131,7 @@ thread_sleep (int64_t ticks)
   struct thread *cur;
   enum intr_level old_level;
 
+//interrupt 걸지 않아도 문제 없을까?	
   old_level = intr_disable ();	// 인터럽트 off
   cur = thread_current ();
   
@@ -155,7 +156,9 @@ thread_awake(int64_t ticks)
   while (e != list_end (&sleep_list)){
     struct thread *t = list_entry (e, struct thread, elem);
     if (t->wakeup <= ticks){	// 스레드가 일어날 시간이 되었는지 확인
-      e = list_remove (e);	// sleep list 에서 제거
+	//thread wake up time 초기화 해주는 거도 있으면 좋음!!!!
+
+      e = list_remove (&t->elem);	// sleep list 에서 제거
       thread_unblock (t);	// 스레드 unblock
     }
     else 
@@ -198,6 +201,8 @@ thread_tick (void) {
 #endif
 	else
 		kernel_ticks++;
+
+	//thread awake를 해주는게 좋을수도?
 
 	/* Enforce preemption. */
 	if (++thread_ticks >= TIME_SLICE)
@@ -257,6 +262,10 @@ thread_create (const char *name, int priority,
 	/* Add to run queue. */
 	thread_unblock (t);
 
+	/*compare priority*/
+	//preemption 방식도 좋으나 그냥 yield하는 것도 같은 방식이다.
+	thread_preemption();
+
 	return tid;
 }
 
@@ -274,6 +283,67 @@ thread_block (void) {
 	schedule ();
 }
 
+
+//추가 함수 thread 우선순위 판단
+//parameter에 void *aux UNUSED 추가?
+
+bool
+thread_compare_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED){
+	return list_entry(a, struct thread, elem)->priority 
+	> list_entry(b, struct thread, elem)->priority;
+}
+
+bool
+thread_compare_donate_priority (const struct list_elem *l, const struct list_elem *s, void *aux UNUSED){
+	return list_entry (l, struct thread, donation_elem)->priority
+		 > list_entry (s, struct thread, donation_elem)->priority;
+}
+
+void
+donate_priority(){
+	int depth;
+	struct thread *cur = thread_current();
+
+	for(depth = 0; depth < 8; depth++){
+		if(!cur->wait_on_lock)break;
+		struct thread *chg = cur->wait_on_lock->holder;
+		chg->priority = cur->priority;
+		cur = chg;
+	}
+}
+
+
+void
+rebuild_priority(){
+	struct thread *cur = thread_current();
+	cur->priority = cur->init_priority;
+
+	if(!list_empty(&cur->donations)){
+		list_sort(&cur->donations, thread_compare_donate_priority, 0);
+
+		struct thread *front = list_entry(list_front(&cur->donations), struct thread,
+		donation_elem);
+
+		
+		if(front->priority > cur->priority)
+			cur->priority = front->priority;
+	}
+}
+
+void
+remove_lock(struct lock* lock){
+	struct list_elem *e;
+	struct thread *cur = thread_current();
+
+	for(e = list_begin(&cur->donations); e != list_end(&cur->donations); e = list_next(e)){
+		struct thread *t = list_entry(e, struct thread, donation_elem);
+		if(t->wait_on_lock == lock)
+			list_remove(&t->donation_elem);
+	}
+}
+
+
+
 /* Transitions a blocked thread T to the ready-to-run state.
    This is an error if T is not blocked.  (Use thread_yield() to
    make the running thread ready.)
@@ -290,7 +360,10 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	list_push_back (&ready_list, &t->elem);
+	// list_push_back (&ready_list, &t->elem);
+	list_insert_ordered (&ready_list, &t->elem, thread_compare_priority, 0);
+	//ordered 되도록 배열에 삽입
+	
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
 }
@@ -352,13 +425,26 @@ thread_yield (void) {
 	ASSERT (!intr_context ());
 
 	old_level = intr_disable ();
+	// if (curr != idle_thread)
+	// 	list_push_back (&ready_list, &curr->elem);
 	if (curr != idle_thread)
-		list_push_back (&ready_list, &curr->elem);
+		list_insert_ordered (&ready_list, &curr->elem, thread_compare_priority, 0);
+
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
 }
 
 
+//강제 토스
+//스레드에 선점 여부 테스트
+void
+thread_preemption(){
+	if(!list_empty(&ready_list)&&
+	thread_current()->priority 
+	<list_entry(list_front(&ready_list), struct thread, elem)->priority
+	)
+	thread_yield();
+}
 
 
 
@@ -368,6 +454,8 @@ thread_yield (void) {
 void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
+	list_sort(&ready_list,thread_compare_priority,NULL);
+	thread_preemption();
 }
 
 /* Returns the current thread's priority. */
@@ -375,15 +463,6 @@ int
 thread_get_priority (void) {
 	return thread_current ()->priority;
 }
-//추가 함수 thread 우선순위 판단
-//parameter에 void *aux UNUSED 추가?
-
-bool
-thread_compare_priority(const struct list_elem *a, const struct list_elem *b){
-	printf("test");
-	return list_entry(a, struct thread, elem)->priority > list_entry(b, struct thread, elem)->priority;
-}
-
 
 
 
@@ -479,6 +558,15 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
+
+	//현재 thread에 대한 초기 priority 값 저장
+	//wait_on_clock 변수
+	//donations list 초기화
+	 t->init_priority = priority;
+	 t->wait_on_lock = NULL;
+	 list_init(&t->donations);
+	
+
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

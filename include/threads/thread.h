@@ -95,7 +95,16 @@ struct thread {
 
 	int64_t wakeup; // 깨어나야 하는 ticks 값
 
-    
+	//lock걸기
+	// 현재 thread에 donation 해주는 thread list
+	// donation에 대한 현재 thread를 원소
+
+	int init_priority;
+	
+	struct lock *wait_on_lock;
+	struct list donations;
+	struct list_elem donation_elem;
+	
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
@@ -152,5 +161,19 @@ int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
 void do_iret (struct intr_frame *tf);
+
+//우선순위 비교 함수
+bool thread_compare_priority(const struct list_elem*, const struct list_elem*, void *aux UNUSED);
+//donation 우선순위 비교 함수
+bool thread_compare_donate_priority (const struct list_elem*, const struct list_elem*, void *aux UNUSED);
+//donate 우선 순위
+void donate_priority(void);
+
+void remove_lock(struct lock*);
+
+void rebuild_priority(void);
+
+void thread_preemption();
+
 
 #endif /* threads/thread.h */

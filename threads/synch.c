@@ -57,6 +57,21 @@ sema_init (struct semaphore *sema, unsigned value) {
    interrupts disabled, but if it sleeps then the next scheduled
    thread will probably turn interrupts back on. This is
    sema_down function. */
+// void
+// sema_down (struct semaphore *sema) {
+// 	enum intr_level old_level;
+
+// 	ASSERT (sema != NULL);
+// 	ASSERT (!intr_context ());
+
+// 	old_level = intr_disable ();
+// 	while (sema->value == 0) {
+// 		list_push_back (&sema->waiters, &thread_current ()->elem);
+// 		thread_block ();
+// 	}
+// 	sema->value--;
+// 	intr_set_level (old_level);
+// }
 void
 sema_down (struct semaphore *sema) {
 	enum intr_level old_level;
@@ -66,12 +81,15 @@ sema_down (struct semaphore *sema) {
 
 	old_level = intr_disable ();
 	while (sema->value == 0) {
-		list_push_back (&sema->waiters, &thread_current ()->elem);
+		//list_push_back (&sema->waiters, &thread_current ()->elem);
+		list_insert_ordered(&sema->waiters, &thread_current()->elem, thread_compare_priority, 0);
 		thread_block ();
 	}
 	sema->value--;
 	intr_set_level (old_level);
 }
+
+
 
 /* Down or "P" operation on a semaphore, but only if the
    semaphore is not already 0.  Returns true if the semaphore is
@@ -102,6 +120,21 @@ sema_try_down (struct semaphore *sema) {
    and wakes up one thread of those waiting for SEMA, if any.
 
    This function may be called from an interrupt handler. */
+// void
+// sema_up (struct semaphore *sema) {
+// 	enum intr_level old_level;
+
+// 	ASSERT (sema != NULL);
+
+// 	old_level = intr_disable ();
+// 	if (!list_empty (&sema->waiters))
+// 		thread_unblock (list_entry (list_pop_front (&sema->waiters),
+// 					struct thread, elem));
+// 	sema->value++;
+// 	intr_set_level (old_level);
+// }
+
+
 void
 sema_up (struct semaphore *sema) {
 	enum intr_level old_level;
@@ -109,12 +142,18 @@ sema_up (struct semaphore *sema) {
 	ASSERT (sema != NULL);
 
 	old_level = intr_disable ();
-	if (!list_empty (&sema->waiters))
-		thread_unblock (list_entry (list_pop_front (&sema->waiters),
-					struct thread, elem));
+	if (!list_empty (&sema->waiters)){
+		list_sort(&sema->waiters, thread_compare_priority, 0);
+		
+		struct thread *t = list_entry(list_pop_front(&sema->waiters), struct thread, elem);
+		thread_unblock(t);
+	}
+
 	sema->value++;
+	thread_preemption();
 	intr_set_level (old_level);
 }
+
 
 static void sema_test_helper (void *sema_);
 
@@ -182,15 +221,38 @@ lock_init (struct lock *lock) {
    interrupt handler.  This function may be called with
    interrupts disabled, but interrupts will be turned back on if
    we need to sleep. */
+// void
+// lock_acquire (struct lock *lock) {
+// 	ASSERT (lock != NULL);
+// 	ASSERT (!intr_context ());
+// 	ASSERT (!lock_held_by_current_thread (lock));
+
+// 	sema_down (&lock->semaphore);
+// 	lock->holder = thread_current ();
+// }
+
+
 void
 lock_acquire (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
 
-	sema_down (&lock->semaphore);
-	lock->holder = thread_current ();
+	struct thread *cur = thread_current();
+	if(lock->holder){
+		cur->wait_on_lock = lock;
+		list_insert_ordered(&lock->holder->donations, 
+		&cur->donation_elem, thread_compare_donate_priority, 0);
+		
+		donate_priority();									//TODO
+	}
+	sema_down(&lock->semaphore);
+
+	cur->wait_on_lock = NULL;
+	lock->holder = cur;
 }
+
+
 
 /* Tries to acquires LOCK and returns true if successful or false
    on failure.  The lock must not already be held by the current
@@ -217,14 +279,28 @@ lock_try_acquire (struct lock *lock) {
    An interrupt handler cannot acquire a lock, so it does not
    make sense to try to release a lock within an interrupt
    handler. */
+// void
+// lock_release (struct lock *lock) {
+// 	ASSERT (lock != NULL);
+// 	ASSERT (lock_held_by_current_thread (lock));
+
+// 	lock->holder = NULL;
+// 	sema_up (&lock->semaphore);
+// }
+
 void
 lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
 
+	//remove_lock(lock);
+	//rebuild_priority();
+
 	lock->holder = NULL;
 	sema_up (&lock->semaphore);
 }
+
+
 
 /* Returns true if the current thread holds LOCK, false
    otherwise.  (Note that testing whether some other thread holds
@@ -321,3 +397,8 @@ cond_broadcast (struct condition *cond, struct lock *lock) {
 	while (!list_empty (&cond->waiters))
 		cond_signal (cond, lock);
 }
+
+
+
+
+
