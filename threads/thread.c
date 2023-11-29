@@ -250,31 +250,34 @@ thread_unblock (struct thread *t) {
 }
 
 void thread_sleep(int64_t ticks){	// 매개변수 -> 시간 => int
-	struct thread *curr = thread_current ();	// thread_current가 현재 쓰레드에 대한 정보를 줌
-	enum intr_level old_level;	// ???
+	struct thread *curr = thread_current ();	// thread_current=> running status
 
-	ASSERT (!intr_context ());	// 외부 인터럽트 수행 중이라면 종료. 외부 인터럽트 수행 중에는 다른 작업들 이루어지면 안됨.
+	// ASSERT(): 조건식이 true일 때 프로그램 계속 실행, false이면 프로그램 중단.
+	ASSERT (!intr_context ());	// 외부 인터럽트 수행 중이면 프로그램 중단. 외부 인터럽트 수행 중에는 다른 작업들 이루어지면 안됨.
 
-	old_level = intr_disable ();	// 인터럽트 OFF
+	enum intr_level old_level;
+	old_level = intr_disable ();	// 인터럽트 OFF + 이전 상태(INTR_ON) 반환
+
 	if (curr != idle_thread){	// 현재 쓰레드가 idle thread가 아니라면
 		curr->wakeup_tick = ticks;	// 깨울 시간 저장 (ticks)
-		list_push_back (&sleep_list, &curr->elem);	// 제거한 쓰레드 sleep_list에 추가
-		// ready list에선 언제 제거 ??
-	}	
-	thread_block();	// block status로 변경 (재우기 완료). do_schedule(THREAD_BLOCKED); 도 되나 ??
-	intr_set_level (old_level);	// 인터럽트 ON
+		list_push_back (&sleep_list, &curr->elem);	// sleep_list에 추가
+	}
+	
+	thread_block();	// block status로 변경 (재우기 완료)
+	intr_set_level (old_level);	// 인터럽트 ON. old_level에는 이전 상태인 INTR_ON가 저장되어 있음.
+	// return level == INTR_ON ? intr_enable () : intr_disable ();
 }
 
 void thread_awake(int64_t ticks){	// 매개변수 -> 시간 => int
 	struct thread *t;
-	struct list_elem *now = list_begin(&sleep_list);	// 왜 주소값을 넣음 ??
+	struct list_elem *now = list_begin(&sleep_list);	// sleep_list가 아닌 &sleep_list를 넣어야 함수가 리스트 수정하거나 직접 액세스 할 수 있음
 
-	while (now != list_end(&sleep_list)){	// sleep list에 쓰레드 하나 잇는 경우는 ??
-		t = list_entry(now, struct thread, elem);	// sleep list 순회. list entry 리턴값은 thread 구조체
+	while (now != list_end(&sleep_list)){	// sleep_list 순회
+		t = list_entry(now, struct thread, elem);	// 리스트 요소 now에 대한 포인터를 쓰레드 변환
 		
 		/* 쓰레드 깨울 시간 확인 */
 		if (t->wakeup_tick <= ticks){	// 깨울 시간이 현재 시간 이하라면 깨움
-			now = list_remove(&t->elem);	// sleep_list에서 삭제
+			now = list_remove(&(t->elem));	// sleep_list에서 삭제
 			thread_unblock(t);	// unblock status로 변경
 		}
 		else {	// 안깨움 (더 재움)

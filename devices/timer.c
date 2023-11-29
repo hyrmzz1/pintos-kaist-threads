@@ -95,7 +95,7 @@ timer_sleep (int64_t ticks) {	// ticks만큼 재운다
 	/*
 	int64_t start = timer_ticks ();	// 함수 호출될 때 현재 타이머 틱 수 기록 (= 시작, 현재 시간)
 
-	ASSERT (intr_get_level () == INTR_ON);	// 인터럽트 활성화되어있는지 확인
+	ASSERT (intr_get_level () == INTR_ON);	// 인터럽트 활성화되어있는지 확인. ASSERT(): 조건식이 true일 때 프로그램 계속 실행, false이면 프로그램 중단.
 	while (timer_elapsed (start) < ticks)	// 경과 시간이 지정된 ticks보다 작으면 아직 깨울 시간 안됐다는 것.
 		thread_yield ();	// running status => ready status. CPU 양도, 다른 스레드 실행되도록 함.
 	*/
@@ -132,9 +132,9 @@ timer_print_stats (void) {
 /* Timer interrupt handler. */
 static void
 timer_interrupt (struct intr_frame *args UNUSED) {	// 매 tick마다 해당 tick에 깨워야 할 쓰레드들 깨우기
-	ticks++;	// 시간 계속 흐르니까 틱도 계속 증가. global tick?
-	thread_tick ();	// OS 부팅 이후 경과한 타이머 틱 수 반환
-	thread_awake (ticks);	// sleep list와 the global tick 체크하고 깨울 쓰레드 찾아서 ready list로 옮기고, global tick 업데이트
+	ticks++;	// 시간 계속 흐르니까 틱도 계속 증가.
+	thread_tick ();	// ticks => 깨울 시간
+	thread_awake (ticks);	// ticks에 깨운다
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

@@ -67,7 +67,7 @@ list_init (struct list *list) {
 struct list_elem *
 list_begin (struct list *list) {
 	ASSERT (list != NULL);
-	return list->head.next;
+	return list->head.next;	// head는 데이터(쓰레드) 아님 => head 바로 다음부터 데이터 위치함.
 }
 
 /* Returns the element after ELEM in its list.  If ELEM is the
@@ -87,7 +87,7 @@ list_next (struct list_elem *elem) {
 struct list_elem *
 list_end (struct list *list) {
 	ASSERT (list != NULL);
-	return &list->tail;
+	return &list->tail;	// tail은 데이터(쓰레드) 아님
 }
 
 /* Returns the LIST's reverse beginning, for iterating through
