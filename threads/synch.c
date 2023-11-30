@@ -293,10 +293,10 @@ lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
 
-	//remove_lock(lock);
-	//rebuild_priority();
 
 	lock->holder = NULL;
+	remove_lock(lock);
+	rebuild_priority();
 	sema_up (&lock->semaphore);
 }
 
@@ -358,8 +358,10 @@ cond_wait (struct condition *cond, struct lock *lock) {
 	ASSERT (lock_held_by_current_thread (lock));
 
 	sema_init (&waiter.semaphore, 0);
-	list_push_back (&cond->waiters, &waiter.elem);
-	lock_release (lock);
+	//list_push_back (&cond->waiters, &waiter.elem);
+	list_insert_ordered(&cond->waiters, &waiter.elem, cmp_sema_priority, 0);
+	lock_release(lock);				//수정사항
+
 	sema_down (&waiter.semaphore);
 	lock_acquire (lock);
 }
@@ -378,9 +380,15 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED) {
 	ASSERT (!intr_context ());
 	ASSERT (lock_held_by_current_thread (lock));
 
-	if (!list_empty (&cond->waiters))
+	// if (!list_empty (&cond->waiters))
+	// 	sema_up (&list_entry (list_pop_front (&cond->waiters),
+	// 				struct semaphore_elem, elem)->semaphore);
+	if (!list_empty (&cond->waiters)){
+		list_sort(&cond->waiters, cmp_sema_priority, 0);
+
 		sema_up (&list_entry (list_pop_front (&cond->waiters),
 					struct semaphore_elem, elem)->semaphore);
+	}
 }
 
 /* Wakes up all threads, if any, waiting on COND (protected by
@@ -399,6 +407,16 @@ cond_broadcast (struct condition *cond, struct lock *lock) {
 }
 
 
+
+bool cmp_sema_priority(const struct list_elem *a, const struct list_elem *b, void * aux){
+	struct semaphore_elem *sema_a = list_entry(a, struct semaphore_elem, elem);
+	struct semaphore_elem *sema_b = list_entry(b, struct semaphore_elem, elem);
+	struct list *sema_a_waiters = &(sema_a->semaphore.waiters);
+	struct list *sema_b_waiters = &(sema_b->semaphore.waiters);
+	struct thread *sema_a_waiters_front = list_entry(list_begin(sema_a_waiters), struct thread, elem);
+	struct thread *sema_b_waiters_front = list_entry(list_begin(sema_b_waiters), struct thread, elem);
+	return sema_a_waiters_front->priority > sema_b_waiters_front->priority;	
+}
 
 
 
