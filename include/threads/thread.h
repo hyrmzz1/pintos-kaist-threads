@@ -93,7 +93,18 @@ struct thread {
 	int priority;                       /* Priority. */
 
 
-	int64_t wakeup; // 깨어나야 하는 ticks 값
+
+	/* Shared between thread.c and synch.c. */
+	struct list_elem elem;              /* List element. */
+	//mlfqs 스케줄러에 사용할 배열
+	//struct list_elem elem;
+	struct list_elem all_elem;
+
+	//mlfqs에 필요한 nice변수와 최근 cpu사용 쓰레드.
+	int nice;
+	int recent_cpu;
+
+
 
 	//lock걸기
 	// 현재 thread에 donation 해주는 thread list
@@ -106,8 +117,6 @@ struct thread {
 	struct list_elem donation_elem;
 	
 
-	/* Shared between thread.c and synch.c. */
-	struct list_elem elem;              /* List element. */
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
@@ -121,6 +130,7 @@ struct thread {
 	/* Owned by thread.c. */
 	struct intr_frame tf;               /* Information for switching */
 	unsigned magic;                     /* Detects stack overflow. */
+	int64_t wakeup; // 깨어나야 하는 ticks 값
 };
 
 /* If false (default), use round-robin scheduler.
@@ -174,6 +184,13 @@ void remove_lock(struct lock*);
 void rebuild_priority(void);
 
 void thread_preemption();
+
+//mlfqs 관련 methods
+void mlfqs_priority(struct thread *t);
+void mlfqs_recent_cpu(struct thread *t);
+void mlfqs_load_avg(void);
+void mlfqs_increment(void);
+void mlfqs_recalc(void);
 
 
 #endif /* threads/thread.h */

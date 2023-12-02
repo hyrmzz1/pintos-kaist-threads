@@ -146,6 +146,17 @@ timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
   thread_tick ();
+  //mlfqs일 경우 주기적 update
+  if(thread_mlfqs){
+	mlfqs_increment();
+	if(timer_ticks() % 4 == 0){
+		mlfqs_priority(thread_current());
+		if(timer_ticks() % TIMER_FREQ == 0){
+			mlfqs_load_avg();
+			mlfqs_recalc();
+		}
+	}
+  }
   thread_awake (ticks);	// ticks 가 증가할때마다 awake 작업 수행
 }
 
