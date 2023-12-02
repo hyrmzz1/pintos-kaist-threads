@@ -554,7 +554,7 @@ void mlfqs_priority(struct thread *t){
 	// t->priority = fp_to_int(add_mixed(div_mixed(t->recent_cpu, -4), PRI_MAX - t->nice * 2));
 	if (t == idle_thread)
 		return;
-	t->priority = fp_to_int(add_mixed(div_mixed(t->recent_cpu, -4), PRI_MAX - t->nice * 2));
+	t->priority = fp_to_int_round(add_mixed(div_mixed(t->recent_cpu, -4), PRI_MAX - t->nice * 2));		//수정
 }
 void mlfqs_recent_cpu(struct thread *t){
 	if(t == idle_thread) // make sure that current thread is not idle thread
@@ -567,10 +567,11 @@ void mlfqs_load_avg (void){
 	struct thread *curr = thread_current();
 	if (curr != idle_thread)
 		ready_threads ++;
-	load_avg = add_fp(mult_fp(div_fp(int_to_fp(59), int_to_fp(60)), load_avg), mult_mixed(div_fp(int_to_fp(1), int_to_fp(60)), ready_threads));
-	// if (load_avg < 0){ // load_avg는 0보다 작아질 수 없다.
-	// 	load_avg = LOAD_AVG_DEFAULT;
-	// }
+	//load_avg = add_fp(mult_fp(div_fp(int_to_fp(59), int_to_fp(60)), load_avg), mult_mixed(div_fp(int_to_fp(1), int_to_fp(60)), ready_threads));
+	load_avg = add_fp(mult_fp(div_fp(int_to_fp(59), int_to_fp(60)), load_avg), div_fp(int_to_fp(ready_threads), int_to_fp(60)));
+	if (load_avg < 0){ // load_avg는 0보다 작아질 수 없다.
+		load_avg = LOAD_AVG_DEFAULT;
+	}
 }
 
 
@@ -581,12 +582,11 @@ void mlfqs_increment(void){
 }
 void mlfqs_recalc(void){
 	struct list_elem *e;
+
 	for(e = list_begin(&all_list); e != list_end(&all_list); e = list_next(e)){
 		mlfqs_recent_cpu(list_entry(e, struct thread, all_elem));
 		mlfqs_priority(list_entry(e, struct thread, all_elem));
 	}
-
-
 }
 
 

@@ -1,3 +1,4 @@
+#include <stdint.h>
 #define F (1 << 14)     //fixed point 1 (in 17.14 format)
 #define INT_MAX ((1 << 31) - 1)
 #define INT_MIN (-(1 << 31))
@@ -57,15 +58,15 @@ int sub_mixed (int x, int n) {
 }
 
 int mult_fp (int x, int y) {
-  return ((int) (x)) * y / F;
+  return ((int64_t) (x)) * y / F;
 }
 
 int mult_mixed (int x, int n) {
-  return x * n;
+  return x * n ;
 }
 
 int div_fp (int x, int y) {
-  return ((int) (x)) * F / y;
+  return ((int64_t) (x)) * F / y;
 }
 
 int div_mixed (int x, int n) {
