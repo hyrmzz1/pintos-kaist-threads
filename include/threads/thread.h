@@ -28,6 +28,10 @@ typedef int tid_t;
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
 
+#define NICE_DEFAULT 0
+#define RECENT_CPU_DEFAULT 0
+#define LOAD_AVG_DEFAULT 0
+
 /* A kernel thread or user process.
  *
  * Each thread structure is stored in its own 4 kB page.  The
@@ -95,6 +99,7 @@ struct thread {
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
+	struct list_elem all_elem;			/* all list의 element */
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
@@ -108,6 +113,9 @@ struct thread {
 	/* Owned by thread.c. */
 	struct intr_frame tf;               /* Information for switching */
 	unsigned magic;                     /* Detects stack overflow. */
+
+	int nice;
+	int recent_cpu;	// 왜 int형으로 선언? recent_cpu는 real number 아닌가 ..!!!!...!!!!!!! ??????
 };
 
 /* If false (default), use round-robin scheduler.
@@ -139,11 +147,19 @@ void thread_yield (void);
 
 int thread_get_priority (void);
 void thread_set_priority (int);
+bool thread_compare_priority(struct list_elem *l, struct list_elem *s,void *aux UNUSED);
 
+/* mlfqs */
 int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+void mlfqs_priority (struct thread *t);
+void mlfqs_recent_cpu (struct thread *t);
+void mlfqs_load_avg (void);
+void mlfqs_increment (void);
+void mlfqs_recalc (void);
+int load_avg;
 
 void do_iret (struct intr_frame *tf);
 

@@ -134,6 +134,22 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED) {	// 매 tick마다 해당 tick에 깨워야 할 쓰레드들 깨우기
 	ticks++;	// 시간 계속 흐르니까 틱도 계속 증가.
 	thread_tick ();	// ticks => 깨울 시간
+
+	if (thread_mlfqs){
+		mlfqs_increment();	// timer_interrupt 발생할 때마다(= 틱 증가할 때마다, 위에 정의되어 있음) recuent_cpu 1 증가
+
+		/* 매 4tick마다 현재 실행 중인 쓰레드의 priority 계산 => 모든 프로세스의 우선순위 다시 계산하는거 아닌가 ???*/
+		if (timer_ticks() % 4 == 0){	// 왜 thread_ticks 아니고 timer_ticks() 사용하지?
+			mlfqs_priority(thread_current());
+			// 1초마다 모든 프로세스의 recent_cpu 업데이트
+			// 근데 왜 여기선 현재 쓰레드만의 load_avg, recent_cpu 계산??
+			if (timer_ticks() % TIMER_FREQ == 0){
+				mlfqs_load_avg();
+				// mlfqs_recent_cpu(thread_current());
+				mlfqs_recalc();	// why..........
+			}
+		}
+	}
 	thread_awake (ticks);	// ticks에 깨운다
 }
 
