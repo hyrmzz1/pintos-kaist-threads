@@ -211,6 +211,8 @@ thread_create (const char *name, int priority,
 	/* Add to run queue. */
 	thread_unblock (t);
 
+	// ready list로 넣어줘야 함 => running status thread랑 우선순위 비교 => 우선순위 더 높은 쓰레드 실행
+	thread_test_preemtion();
 	return tid;
 }
 
@@ -244,7 +246,8 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	list_push_back (&ready_list, &t->elem);
+	// list_push_back (&ready_list, &t->elem);
+	list_insert_ordered(&ready_list, &t->elem, thread_compare_priority, NULL);
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
 }
@@ -277,13 +280,21 @@ void thread_awake(int64_t ticks){	// 매개변수 -> 시간 => int
 		
 		/* 쓰레드 깨울 시간 확인 */
 		if (t->wakeup_tick <= ticks){	// 깨울 시간이 현재 시간 이하라면 깨움
-			now = list_remove(&(t->elem));	// sleep_list에서 삭제
+			now = list_remove(&(t->elem));	// sleep_list에서 삭제, now는 다음 쓰레드로 갱신 (return elem->next;)
 			thread_unblock(t);	// unblock status로 변경
 		}
 		else {	// 안깨움 (더 재움)
 			now = list_next(now);	// 다음 쓰레드 순회하도록 now 갱신
 		}
 	}
+}
+
+void
+thread_test_preemtion (void){
+	if (!list_empty(&ready_list) &&
+		list_entry(list_front(&ready_list), struct thread, elem)->priority 
+		> thread_current()->priority)
+		thread_yield();
 }
 
 /* Returns the name of the running thread. */
@@ -344,7 +355,8 @@ thread_yield (void) {
 
 	old_level = intr_disable ();	// 인터럽트 OFF
 	if (curr != idle_thread)	// 현재 쓰레드가 idle thread가 아니라면
-		list_push_back (&ready_list, &curr->elem);	// ready list에 넣고
+		// list_push_back (&ready_list, &curr->elem);	// ready list에 넣고
+		list_insert_ordered(&ready_list, &curr->elem, thread_compare_priority, NULL);
 	do_schedule (THREAD_READY);	// ready status로 바꿔줌
 	intr_set_level (old_level);	// 인터럽트 ON
 }
@@ -353,12 +365,20 @@ thread_yield (void) {
 void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
+	thread_test_preemtion();	// yield와 같은 역할
 }
 
 /* Returns the current thread's priority. */
 int
 thread_get_priority (void) {
 	return thread_current ()->priority;
+}
+
+bool 
+thread_compare_priority(struct list_elem *l, struct list_elem *s,
+void *aux UNUSED){
+	return list_entry(l, struct thread, elem)->priority 
+		> list_entry(s, struct thread, elem)->priority;	// l이 s보다 우선순위가 높으면 1 반환, 아니면 0 반환
 }
 
 /* Sets the current thread's nice value to NICE. */
