@@ -30,11 +30,12 @@
    without sacrificing this simplicity.  But using two separate
    elements allows us to do a little bit of checking on some
    operations, which can be valuable.) */
-
+/* 두 list_elem 요소가 정렬 순서에 따라 있는지 여부를 확인 */
 static bool is_sorted (struct list_elem *a, struct list_elem *b,
 		list_less_func *less, void *aux) UNUSED;
 
 /* Returns true if ELEM is a head, false otherwise. */
+/* 주어진 요소가 이중 연결 리스트의 head 부분인지를 확인 */
 static inline bool
 is_head (struct list_elem *elem) {
 	return elem != NULL && elem->prev == NULL && elem->next != NULL;
@@ -42,40 +43,45 @@ is_head (struct list_elem *elem) {
 
 /* Returns true if ELEM is an interior element,
    false otherwise. */
+/* 주어진 요소가 이중 연결 리스트의 내부 요소인지를 확인 */
 static inline bool
 is_interior (struct list_elem *elem) {
 	return elem != NULL && elem->prev != NULL && elem->next != NULL;
 }
 
 /* Returns true if ELEM is a tail, false otherwise. */
+/* 주어진 요소가 이중 연결 리스트의 꼬리인지 여부를 확인 */
 static inline bool
 is_tail (struct list_elem *elem) {
 	return elem != NULL && elem->prev != NULL && elem->next == NULL;
 }
 
 /* Initializes LIST as an empty list. */
+/* 연결 리스트(linked list) 초기화 */
 void
 list_init (struct list *list) {
-	ASSERT (list != NULL);
-	list->head.prev = NULL;
-	list->head.next = &list->tail;
-	list->tail.prev = &list->head;
-	list->tail.next = NULL;
+	ASSERT (list != NULL);	/* 전달된 list 포인터가 NULL이 아닌지 확인함. NULL 포인터는 유효하지 않은 주소이므로 이를 검증하는 것 */
+	list->head.prev = NULL;	/* list의 head 노드의 prev 포인터를 NULL로 설정 */
+	list->head.next = &list->tail;	/* list의 head 노드의 next 포인터를 list의 tail 노드로 설정 */
+	list->tail.prev = &list->head;	/* list의 tail 노드의 prev 포인터를 list의 head 노드로 설정 */
+	list->tail.next = NULL;	/* list의 tail 노드의 next 포인터를 NULL로 설정 */
 }
 
 /* Returns the beginning of LIST.  */
+/* list의 첫 번째 요소를 반환하는 함수 */
 struct list_elem *
 list_begin (struct list *list) {
-	ASSERT (list != NULL);
-	return list->head.next;
+	ASSERT (list != NULL);	/* list 포인터가 NULL이 아님을 확인함. */
+	return list->head.next;	/* head 노드 다음에 있는 요소를 반환함. (연결 리스트의 첫 번째 실제 요소를 가리킴) */
 }
 
 /* Returns the element after ELEM in its list.  If ELEM is the
    last element in its list, returns the list tail.  Results are
    undefined if ELEM is itself a list tail. */
+/* 연결 리스트의 주어진 요소의 다음 요소를 반환하는 함수 */
 struct list_elem *
 list_next (struct list_elem *elem) {
-	ASSERT (is_head (elem) || is_interior (elem));
+	ASSERT (is_head (elem) || is_interior (elem));	/*  */
 	return elem->next;
 }
 
@@ -84,6 +90,7 @@ list_next (struct list_elem *elem) {
    list_end() is often used in iterating through a list from
    front to back.  See the big comment at the top of list.h for
    an example. */
+/* list의 끝을 나타내는 요소를 가리키는 포인터를 반환함. */
 struct list_elem *
 list_end (struct list *list) {
 	ASSERT (list != NULL);
@@ -92,6 +99,7 @@ list_end (struct list *list) {
 
 /* Returns the LIST's reverse beginning, for iterating through
    LIST in reverse order, from back to front. */
+/* list의 실제 마지막 요소를 가리킴. */
 struct list_elem *
 list_rbegin (struct list *list) {
 	ASSERT (list != NULL);
@@ -265,6 +273,7 @@ list_pop_back (struct list *list) {
 
 /* Returns the front element in LIST.
    Undefined behavior if LIST is empty. */
+/* 리스트의 맨 앞에 있는 요소를 반환함 */
 struct list_elem *
 list_front (struct list *list) {
 	ASSERT (!list_empty (list));

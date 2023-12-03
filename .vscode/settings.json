@@ -1,5 +1,13 @@
 {
     "files.associations": {
-        "vaddr.h": "c"
+        "vaddr.h": "c",
+        "list.h": "c",
+        "synch.h": "c",
+        "string.h": "c",
+        "stdio.h": "c",
+        "thread.h": "c",
+        "intr-stubs.h": "c",
+        "palloc.h": "c",
+        "interrupt.h": "c"
     }
 }

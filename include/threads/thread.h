@@ -87,13 +87,18 @@ typedef int tid_t;
  * blocked state is on a semaphore wait list. */
 struct thread {
 	/* Owned by thread.c. */
-	tid_t tid;                          /* Thread identifier. */
-	enum thread_status status;          /* Thread state. */
-	char name[16];                      /* Name (for debugging purposes). */
-	int priority;                       /* Priority. */
+	tid_t tid;                          /* Thread identifier. */	/* 쓰레드 식별자 */
+	enum thread_status status;          /* Thread state. */	/* 쓰레드의 현재 상태를 나타내는 열거형(enum) 변수 : RUNNING, READY, BLOCKED, DYING */
+	char name[16];                      /* Name (for debugging purposes). */	/* 쓰레드의 이름 */
+	int priority;                       /* Priority. */	/* 쓰레드의 우선 순위를 나타내는 정수, 스케줄링에서 활용됨. */
 	/* Shared between thread.c and synch.c. */
-	struct list_elem elem;              /* List element. */
-	int64_t wakeup;	/* 일어나야할 ticks 값 부여 */
+	struct list_elem elem;              /* List element. */	/* 쓰레드를 여러 리스트에 연결하기 위한 구조체 */
+	int64_t wakeup;	/* 쓰레드가 깨어나야 하는 시간(틱스)을 나타내는 변수 */
+	
+	int init_priority;	/* 쓰레드가 생성될 때, 혹은 thread_set_priority로 갖게된 쓰레드의 priority를 저장, donation이 종료될 때 기존의 priority로 돌아오기 위한 필드 */
+	struct lock *wait_on_lock; /* 쓰레드가 현재 대기하고 있는 lock을 가리킴 */
+	struct list donations;	/* 다른 쓰레드로부터 받은 우선순위 기부를 관리하는 리스트 */
+	struct list_elem donation_elem;	/* 우선순위 기부 리스트 내에서 쓰레드의 위치를 표시 */
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
@@ -145,5 +150,18 @@ void do_iret (struct intr_frame *tf);
 
 void thread_sleep(int64_t ticks);
 void thread_awake(int64_t ticks);
+
+bool cmp_thread_ticks(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+bool cmp_thread_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);	/* 정렬에 활용할 cmp_thread_priority 함수 선언 */
+
+void preempt_priority(void);	/* 현재 실행 중인 쓰레드의 우선 순위와 ready_list의 쓰레드 우선 순위를 비교하여, 필요한 경우 현재 쓰레드의 실행을 중단하고 더 높은 우선 순위의 쓰레드로 전환하는 로직 */
+
+bool cmp_donation_priority(const struct list_elem *a, const struct list_elem *b, void *aux); /* donation_elem을 priority를 기준으로 내림차순 정렬하는 함수 */
+
+void donate_priority(void);	/* 현재 쓰레드가 기다리고 있는 lock을 소유한 쓰레드(holder)에게 우선 순위를 상속하는 기능을 수행 */
+
+void remove_donor(struct lock *lock);	/* 특정 lock에 대한 우선순위 기부를 제거함 */
+
+void update_priority_before_donations(void);	/* 기부 처리 전에 쓰레드의 우선순위를 업데이트함 */
 
 #endif /* threads/thread.h */

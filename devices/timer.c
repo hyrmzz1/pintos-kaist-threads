@@ -71,6 +71,7 @@ timer_calibrate (void) {
 }
 
 /* Returns the number of timer ticks since the OS booted. */
+/* 시스템이 시작된 이후로 경과한 시간을 tick 단위로 반환하는 함수 */
 int64_t
 timer_ticks (void) {
 	enum intr_level old_level = intr_disable ();
@@ -88,11 +89,18 @@ timer_elapsed (int64_t then) {
 }
 
 /* Suspends execution for approximately TICKS timer ticks. */
+/* timer_sleep : 현재 쓰레드를 주어진 틱 수만큼 일시적으로 재우는 역할 */
 void
 timer_sleep (int64_t ticks) {
 
-	int64_t start = timer_ticks ();
- 	thread_sleep (start + ticks);
+	int64_t start = timer_ticks ();	/* timer_ticks 함수는 현재까지의 틱 수를 반환함, 따라서 현재까지의 tick 수를 start 변수에 저장 */
+
+	/* Busy waiting 방식 */
+	// ASSERT (intr_get_level () == INTR_ON);	/* 현재 인터럽트가 활성화되어 있는지 확인함. */
+    // while (timer_elapsed (start) < ticks)	/* timer_elapsed 함수는 start로부터 경과된 시간을 계산함. (이 루프는 지정된 ticks 시간만큼 재움 ) */
+    //     thread_yield ();	/* 각 루프의 반복에서 thread_yield 함수를 호출하여 다른 쓰레드에게 PCU를 양보함. */
+
+ 	thread_sleep (start + ticks);	/* thread_sleep 함수를 호출하여 현재 스레드를 일시적으로 중지함. 중지하는 시간은 현재 시간(start)로 부터 지정된 틱(tick)수 만큼 중지 */
 }
 
 /* Suspends execution for approximately MS milliseconds. */
