@@ -8,6 +8,8 @@
         "thread.h": "c",
         "intr-stubs.h": "c",
         "palloc.h": "c",
-        "interrupt.h": "c"
+        "interrupt.h": "c",
+        "debug.h": "c",
+        "timer.h": "c"
     }
 }

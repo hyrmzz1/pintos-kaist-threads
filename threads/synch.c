@@ -206,7 +206,8 @@ lock_acquire (struct lock *lock) {
         curr->wait_on_lock = lock; // 현재 쓰레드가 lock을 기다리고 있음을 나타내기 위해 wait_on_lock 설정
         // lock holder의 donors list에 현재 스레드 추가
         list_insert_ordered(&lock->holder->donations, &curr->donation_elem, cmp_donation_priority, NULL); /* 현재 스레드를 락의 보유자의 기부 목록(donations)에 추가합니다. 목록은 우선순위에 따라 정렬됨 */
-        donate_priority(); // 현재 스레드의 priority를 lock holder에게 상속해줌 (우선 순위 역전 방지)
+        if (!thread_mlfqs)
+            donate_priority(); // 현재 스레드의 priority를 lock holder에게 상속해줌 (우선 순위 역전 방지)
     }
 
 	sema_down (&lock->semaphore);	/* 세마포어를 사용하여 lock을 점유함 */
@@ -247,15 +248,19 @@ lock_try_acquire (struct lock *lock) {
 /* lock 해제 함수 */
 void lock_release(struct lock *lock)
 {
-    ASSERT(lock != NULL);	/* 전달받은 lock 포인터가 NULL 인지 확인 */
-    ASSERT(lock_held_by_current_thread(lock));	/* 현재 쓰레드가 실제로 lock을 소유하고 있는 지 확인 */
+    ASSERT(lock != NULL);
+    ASSERT(lock_held_by_current_thread(lock));
 
-    remove_donor(lock);	/* lock을 기다리는 쓰레드들의 기부 목록에서 해당 락을 제거함 */
-    update_priority_for_donations();	/* 우선순위 기부에 의해 변경된 현재 쓰레드의 우선 순위를 업데이트함. */
+    lock->holder = NULL;
 
-    lock->holder = NULL;	/* lock holder를 NULL로 설정하여 락이 더 이상 소유되지 않음 */
-    sema_up(&lock->semaphore);	/* 세마포어의 값을 증가시켜, 대기 중인 다른 쓰레드가 lock을 획득할 수 있게 함. */
+    if (!thread_mlfqs) {
+        remove_donor(lock); // mlfqs가 아닐 경우에만 기부 목록에서 해당 락 제거
+        update_priority_for_donations(); // mlfqs가 아닐 경우에만 우선순위 업데이트
+    }
+
+    sema_up(&lock->semaphore);
 }
+
 
 /* Returns true if the current thread holds LOCK, false
    otherwise.  (Note that testing whether some other thread holds

@@ -129,11 +129,27 @@ timer_print_stats (void) {
 
 /* Timer interrupt handler. */
 static void
-timer_interrupt (struct intr_frame *args UNUSED) {
+timer_interrupt(struct intr_frame *args UNUSED)
+{
 	ticks++;
-	thread_tick ();
-	thread_awake (ticks);	// ticks 가 증가할때마다 awake 작업 수행
+	thread_tick();
+	/* mlfqs 스케줄러일 경우
+	   timer_interrupt 가 발생할때 마다 recuent_cpu 1증가, 
+	   1초마다 load_avg, recent_cpu, priority 재계산,
+	   매 4tick마다 priority 재계산 */
+	if (thread_mlfqs) {
+        mlfqs_increment();
+        if (timer_ticks() % 4 == 0)
+            mlfqs_recalc_priority();
+
+        if (timer_ticks() % 100 == 0) {
+            mlfqs_load_avg();
+            mlfqs_recalc_recent_cpu();
+        }
+    }
+	thread_awake(ticks);
 }
+
 /* Returns true if LOOPS iterations waits for more than one timer
    tick, otherwise false. */
 static bool

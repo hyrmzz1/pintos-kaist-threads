@@ -91,7 +91,8 @@ struct thread {
 	enum thread_status status;          /* Thread state. */	/* 쓰레드의 현재 상태를 나타내는 열거형(enum) 변수 : RUNNING, READY, BLOCKED, DYING */
 	char name[16];                      /* Name (for debugging purposes). */	/* 쓰레드의 이름 */
 	int priority;                       /* Priority. */	/* 쓰레드의 우선 순위를 나타내는 정수, 스케줄링에서 활용됨. */
-	/* Shared between thread.c and synch.c. */
+	/* Shared between thread.c Fand synch.c. */
+	struct list_elem allelem;		/* */
 	struct list_elem elem;              /* List element. */	/* 쓰레드를 여러 리스트에 연결하기 위한 구조체 */
 	int64_t wakeup;	/* 쓰레드가 깨어나야 하는 시간(틱스)을 나타내는 변수 */
 	
@@ -99,6 +100,9 @@ struct thread {
 	struct lock *wait_on_lock; /* 쓰레드가 현재 대기하고 있는 lock을 가리킴 */
 	struct list donations;	/* 다른 쓰레드로부터 받은 우선순위 기부를 관리하는 리스트 */
 	struct list_elem donation_elem;	/* 우선순위 기부 리스트 내에서 쓰레드의 위치를 표시 */
+
+	int nice;	/* 쓰레드의 친절도를 나타내며 쓰레드의 nice 값은 다른 쓰레드에 대한 우선 순위를 결정하는 데 사용됨 */
+	int recent_cpu;	/* 쓰레드가 최근에 사용한 CPU 시간의 양을 추적하며 이 값은 쓰레드의 우선 순위를 결정하는 데 중요한 요소임 */
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
@@ -163,5 +167,15 @@ void donate_priority(void);	/* 현재 쓰레드가 기다리고 있는 lock을 �
 void remove_donor(struct lock *lock);	/* 특정 lock에 대한 우선순위 기부를 제거함 */
 
 void update_priority_before_donations(void);	/* 기부 처리 전에 쓰레드의 우선순위를 업데이트함 */
+
+void mlfqs_priority(struct thread *t);	/* 주어진 쓰레드 t의 우선 순위를 계산함 */
+void mlfqs_recent_cpu(struct thread *t);	/* 쓰레드 t의 recent_cpu 값을 갱신함 */
+void mlfqs_load_avg(void);	/* 시스템의 평균 부하(load_avg)를 업데이트함. load_avg는 준비 상태에 있는 쓰레드들의 평균 수를 나타냄 */
+void mlfqs_increment(void);	/* 현재 실행 중인 쓰레드의 recent_cpu 값을 증가시킴 */
+void mflqs_recalc(void);	/* 시스템의 모든 쓰레드에 대해 recent_cpu와 우선 순위를 재계산함 */
+
+
+void mlfqs_recalc_recent_cpu(void);
+void mlfqs_recalc_priority(void);
 
 #endif /* threads/thread.h */

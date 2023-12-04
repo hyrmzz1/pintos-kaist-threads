@@ -11,6 +11,7 @@
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 #include "intrinsic.h"
+#include "threads/fixed_point.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -26,7 +27,10 @@
 
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
-static struct list ready_list;
+static struct list ready_list;	/* ready 상태의 thread를 관리하는 list */
+
+static struct list all_list;	/* 모든 thread를 관리하는 list */
+
 
 /* Idle thread. */
 static struct thread *idle_thread;
@@ -76,6 +80,11 @@ static struct list sleep_list;	/* 자는 쓰레드들을 저장할 sleep_list �
 /* 현재 실행 중인 쓰레드를 반환함. */
 #define running_thread() ((struct thread *) (pg_round_down (rrsp ())))
 
+#define NICE_DEFAULT 0;
+#define RECENT_CPU_DEFAULT 0;
+#define LOAD_AVG_DEFAULT 0;
+
+int load_avg;
 
 // Global descriptor table for the thread_start.
 // Because the gdt will be setup after the thread_init, we should
@@ -114,6 +123,7 @@ thread_init (void) {
 	list_init (&ready_list);	/* 실행 대기 중인 쓰레드들을 관리하기 위한 리스트를 초기화함. */
 	list_init (&destruction_req);	/* 파괴 요청을 받은 쓰레드들을 관리하기 위한 리스트를 초기화함. */
 	list_init (&sleep_list);	/* 쓰레드 생성할 때 슬립 리스트 생성 */
+	list_init (&all_list);	/* 모든 쓰레드를 추적하기 위한 연결 리스트 생성 */
 
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread ();
@@ -131,6 +141,7 @@ thread_start (void) {
 	struct semaphore idle_started;
 	sema_init (&idle_started, 0);
 	thread_create ("idle", PRI_MIN, idle, &idle_started);
+	load_avg = LOAD_AVG_DEFAULT;
 
 	/* Start preemptive thread scheduling. */
 	intr_enable ();
@@ -191,7 +202,8 @@ thread_awake (int64_t ticks)
     if (t->wakeup <= ticks){	/* 쓰레드가 일어날 시간이 되었는지 확인	(깨어날 시간이 ticks 이하면 깨어날 시간이 되었음.) */
       e = list_remove (e);	// sleep list 에서 제거
       thread_unblock (t);	// 스레드 unblock하고 ready_list에 추가
-	  preempt_priority();	/* 깨어난 쓰레드(unlock 상태)가 현재 실행 중인 쓰레드보다 높은 우선순위를 가지고 있을 경우, 현재 쓰레드의 실행을 중단하고 더 높은 우선 순위의 쓰레드에게 CPU를 양보함. */
+	  if (!thread_mlfqs)
+	  	preempt_priority();	/* 깨어난 쓰레드(unlock 상태)가 현재 실행 중인 쓰레드보다 높은 우선순위를 가지고 있을 경우, 현재 쓰레드의 실행을 중단하고 더 높은 우선 순위의 쓰레드에게 CPU를 양보함. */
     }
     else /* 깨어날 시간이 ticks 보다 크면 깨어날 시간이 되지 않음. */
       e = list_next (e);	/*  */
@@ -361,10 +373,119 @@ thread_yield (void) {
 	intr_set_level (old_level);	/* 이전에 저장된 인터럽트 레벨을 복원함. */
 }
 
+/* 특정 쓰레드의 우선 순위를 계산 */
+/* MLFQS에서 사용되는 우선순위 계산을 위한 함수 */
+/* 여기서 우선순위는 recent_cpu 값과 nice 값에 따라 결정됨 (이 방식으로 MLFQS는 CPU 자원을 공평하게 분배하고자 함)*/
+void mlfqs_priority (struct thread *t)
+{
+	// /* 해당 쓰레드가 idle_thread가 아닌지 검사 */
+	// ASSERT (t != idle_thread);
+	// /* priority 계산식을 구현 (fixed_point.h의 계산함수 이용) */
+	// t->priority = PRI_MAX - (div_mixed(t->recent_cpu, 4)) - (t->nice * 2);
+
+	/* 해당 쓰레드가 idle_thread가 아닌지 검사 */
+	/* priority 계산식을 구현 (fixed_point.h의 계산함수 이용) */
+	/* priority = PRI_MAX - (recent_cpu / 4) - (nice * 2) */
+	if (t != idle_thread) {	/* 현재 쓰레드가 아이들 쓰레드가 아닌지 확인 : 아이들 쓰레드는 우선 순위를 재계산할 필요가 없기 때문에 */
+		int rec_by_4 = div_mixed(t->recent_cpu, 4);	/* recent_cpu / 4 */
+		int nice2 = 2 * t->nice;	/* (nice * 2) */
+		int to_sub = add_mixed(rec_by_4, nice2);	/* rec_by_4와 nice 2를 더한 값을 to_sub에 저장 */
+		int tmp = sub_mixed(to_sub, PRI_MAX);	/* to_sub에 PRI_MAX를 뺀 값을 tmp에 저장함 */
+		int pri_result = fp_to_int(sub_fp(0, tmp));	/* tmp를 0에서 빼서 고정 소수점 결과를 얻고, 그 결과를 정수로 변환하여 pri_result에 저장함 */
+		if (pri_result < PRI_MIN)
+			pri_result = PRI_MIN;
+		if (pri_result > PRI_MAX)
+			pri_result = PRI_MAX;
+		t->priority = pri_result;	/* 계산된 우선 순위가 정해진 범위 밖에 있으면, 그 범위 안으로 조정함 */
+	}
+}
+
+/* 주어진 쓰레드 t의 recent_cpu 값을 재계산 */
+void mlfqs_recent_cpu (struct thread *t)
+{
+	// /* 해당 쓰레드가 idle_thread가 아닌지 검사 */
+	// ASSERT (t != idle_thread);
+	// /* recent_cpu 계산식을 구현 (fixed_point.h의 계산함수 이용) */
+	// t->recent_cpu = mult_mixed(mult_mixed(2, load_avg) / (mult_mixed(2, load_avg) + 1), t->recent_cpu) + t->nice;
+
+	/* 해당 쓰레드가 idle_thread가 아닌지 검사 */
+	/* recent_cpu 계산식을 구현(fixed_point.h의 계산함수 이용) */
+	/* recent_cpu = (2 * load_avg) / (2 * load_avg + 1) * recent_cpu + nice */
+	if (t != idle_thread) {	/* 현재 쓰레드가 아이들 쓰레드인지 확인 : 아이들 쓰레드가 아닌 경우에만 계산을 진행 */
+		int load_avg_2 = mult_mixed(load_avg, 2);	/* 시스템의 load average를 2배 한 값을 계산함. */
+		int load_avg_2_1 = add_mixed(load_avg_2, 1); /* 이전에 계산한 값에 1을 더해, 나눗셈에서 분모를 구성함 */
+		int frac = div_fp(load_avg_2, load_avg_2_1);	/* load_avg의 두 배에 1을 더한 값으로 load_avg의 두 배를 나눔 : recent_cpu 계산에 사용될 비율을 구함 */
+		int tmp = mult_fp(frac, t->recent_cpu);	/* 계산된 비율 frac과 쓰레드의 recent_cpu를 곱함 */
+		int result = add_mixed(tmp, t->nice);	/* 이전 단계의 결과에 쓰레드의 nice를 값을 더함 */
+		if ((result >> 31) == (-1) >> 31) {	/* result가 음수인 경우를 검사하고, 그런 경우 result를 0으로 설정함 */
+			result = 0;
+		}
+		t->recent_cpu = result;	/* 계산된 result_cpu 값을 쓰레드의 recent_cpu 필드에 저장 */
+	}
+}
+
+void mlfqs_load_avg (void)
+{	
+	// int ready_threads = list_size(&ready_list);
+	// struct thread *t = thread_current();
+
+	// if(t != idle_thread)
+	// 	ready_threads++;
+	// /* load_avg계산식을 구현 (fixed_point.h의 계산함수 이용) */
+	// load_avg = (59/60) * load_avg + (1/60) * ready_threads;
+	// /* load_avg 는 0 보다 작아질 수 없다. */
+	// ASSERT(load_avg >= 0);
+
+	/* load_avg 계산식을 구현 (fixed_point.h의 계산함수 이용) */
+	/* load_avg = (59/60) * load_avg + (1/60) * ready_threads */
+	/* load_avg는 0 보다 작아질 수 없다. */
+	int a = div_fp(int_to_fp(59), int_to_fp(60));	/* 고정 소수점으로 변환된 59/60을 계산함 */
+	int b = div_fp(int_to_fp(1), int_to_fp(60));	/* 고정 소수점으로 변환된 1/60을 계산함 */
+	int load_avg2 = mult_fp(a, load_avg);	/* 현재 load average에 59/60을 곱함 */
+	int ready_thread = (int)list_size(&ready_list);	/* 준비 리스트의 크기를 가져옴 */
+	ready_thread = (thread_current() == idle_thread) ? ready_thread : ready_thread + 1;	/* 현재 쓰레드가 아이들 쓰레드가 아니라면 준비 쓰레드의 수에 1을 더함 */
+	int ready_thread2 = mult_mixed(b, ready_thread);	/* 준비 쓰레드의 1/60을 곱함 */
+	int result = add_fp(load_avg2, ready_thread2);	/* 이전에 계산된 load average에 새로운 준비 쓰레드 수를 더함 */
+	load_avg = result;	/* 최종 결과를 load average에 저장 */
+	if (load_avg < 0)	/* load_avg는 0보다 작아질 수 없다. */
+		load_avg = LOAD_AVG_DEFAULT;
+}
+
+/* 타이머 인터럽트가 발생할 때마다 호출되어, 현재 실행 중인 쓰레드가 시간을 사용했음을 반영하여 recent_cpu 값을 증가시키는 역할 */
+void mlfqs_increment (void)
+{
+	// struct thread *t = thread_current();
+	
+	// /* 해당 스레드가 idle_thread 가 아닌지 검사 */
+	// ASSERT(t != idle_thread);
+	// /* 현재 스레드의 recent_cpu 값을 1증가 시킨다. */
+	// add_mixed(t->recent_cpu, 1);
+
+	/* 해당 쓰레드가 idle_thread가 아닌지 검사 */
+	/* 현재 스레드의 recent_cpu 값을 1증가 시킨다. */
+	if (thread_current() != idle_thread) {	/* 현재 실행 중인 쓰레드가 아이들 쓰레드가 아닐 경우에만 recent_cpu를 증가시킴 */
+		thread_current()->recent_cpu = add_mixed(thread_current()->recent_cpu, 1);	/* 현재 쓰레드의 recent_cpu 값에 1을 더하여 업데이트 */
+	}
+
+}
+
+void mlfqs_recalc_recent_cpu(void) {
+    for (struct list_elem *tmp = list_begin(&all_list); tmp != list_end(&all_list); tmp = list_next(tmp)) {
+        mlfqs_recent_cpu(list_entry(tmp, struct thread, allelem));
+    }
+}
+
+void mlfqs_recalc_priority(void) {
+    for (struct list_elem *tmp = list_begin(&all_list); tmp != list_end(&all_list); tmp = list_next(tmp)) {
+        mlfqs_priority(list_entry(tmp, struct thread, allelem));
+    }
+}
+
 /* Sets the current thread's priority to NEW_PRIORITY. */
 /* 현재 실행 중인 쓰레드의 우선 순위를 변경하는 기능을 수행 */
 void
 thread_set_priority (int new_priority) {
+	if (thread_mlfqs) return;	/* mlfqs 스케줄러일때 우선 순위를 임의로 변경할 수 없도록 함 */
 	thread_current ()->priority = new_priority;	/* 쓰레드의 우선 순위를 new_priority로 변경 */
 	thread_current ()->init_priority = new_priority;
 	update_priority_for_donations();	/* 쓰레드의 우선 순위가 변경될 때, 이 함수는 우선 순위 기부 메커니즘에 의해 영향을 받을 수 있는 상황을 고려함. 우선 순위 기부 메커니즘은 높은 우선 순위의 쓰레드가 낮은 우선 순위의 쓰레드에게 자신의 우선 순위를 기부할 수 있게 함. */
@@ -379,30 +500,72 @@ thread_get_priority (void) {
 }
 
 /* Sets the current thread's nice value to NICE. */
+/* 현재 실행 중인 쓰레드의 nice 값을 변경하고, 이 변경에 따라 쓰레드의 우선 순위를 재계산 후, 필요하다면 스케줄링을 다시 수행 */
 void
 thread_set_nice (int nice UNUSED) {
-	/* TODO: Your implementation goes here */
+	/* 현재 스레드의 nice 값을 변경한다. */
+	/* nice 값 변경 후에 현재 스레드의 우선순위를 재계산하고 우선순위에 의해 스케줄링 한다. */
+	/* 해당 작업중에 인터럽트는 비활성화 해야 한다. */
+	struct thread *t = thread_current();	/* 현재 실행 중인 쓰레드의 포인터를 t에 저장 */
+	enum intr_level old_level;	/* 이전 인터럽트 상태를 저장할 변수를 선언 */
+
+	old_level = intr_disable();	/* 현재 인터럽트 상태를 저장하고 인터럽트를 비활성화함 */
+	t->nice = nice;	/* 현재 쓰레드의 nice 값을 새로운 값으로 설정 */
+	mlfqs_priority(t);	/* 변경된 nice 값에 따라 현재 쓰레드의 우선 순위를 재계산함 */
+	preempt_priority();	/* 우선 순위 변경에 따라 현재 쓰레드가 CPU를 양보할 필요가 있는지 검사 */
+	intr_set_level(old_level);	/* 작업이 종료되면 이전 인터럽트 상태로 복원 */
 }
 
 /* Returns the current thread's nice value. */
+/* 현재 실행 중인 쓰레드의 nice 값을 반환함 */
 int
-thread_get_nice (void) {
-	/* TODO: Your implementation goes here */
-	return 0;
+thread_get_nice(void)
+{
+	/* 현재 스레드의 nice 값을 반환한다. */
+	/* 해당 작업중에 인터럽트는 비활성되어야 한다. */
+	struct thread *t = thread_current();	/* 현재 실행 중인 쓰레드의 포인터를 t에 저장 */
+	enum intr_level old_level;	/* 이전 인터럽트 상태를 저장할 변수를 선언함 : nice 값 읽기 작업 동안 인터럽트에 의해 방해받지 않도록 하기 위함. */
+
+	old_level = intr_disable();	/* 현재 인터럽트 상태를 저장하고 인터럽트를 비활성화함 */
+	int nice_val = t->nice;	/* 현재 쓰레드의 nice 값을 nice_val 변수에 저장 */
+	intr_set_level(old_level);	/* 작업이 완료되면 이전 인터럽트 상태로 복원 */
+
+	return nice_val;	/* 저장된 nice 값 반환 */
 }
 
 /* Returns 100 times the system load average. */
+/* 현재 시스템의 load average 값을 계산하여 반환함 */
+/* load average는 시스템의 평균 부하를 나타내며 100배로 확장되어 반환됨 */
 int
-thread_get_load_avg (void) {
-	/* TODO: Your implementation goes here */
-	return 0;
+thread_get_load_avg(void)
+{
+	/* load_avg에 100을 곱해서 반환 한다.
+	   해당 과정중에 인터럽트는 비활성되어야 한다. */
+	/* timer_ticks() % TIMER_FREQ == 0 */
+	enum intr_level old_level;	/* 이전 인터럽트 상태를 저장하기 위한 변수 선언 */
+
+	old_level = intr_disable();	/* 현재 인터럽트 상태를 저장하고 인터럽트를 비활성화 */
+	int new_load_avg = fp_to_int(mult_mixed(load_avg, 100));	/* 시스템의 load average 값을 100배 확장하고, 고정 소수점 표현에서 정수로 변환 */
+	intr_set_level(old_level);	/* 인터럽트 상태를 이전 상태로 복원 */
+
+	return new_load_avg;	/* 계산된 load average 값을 반환 */
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
+/* 현재 실행 중인 쓰레드의 recent_cpu 값을 반환하는 것 */
+/* recent_cpu 값은 100배로 확장되어 반환됨 */
 int
-thread_get_recent_cpu (void) {
-	/* TODO: Your implementation goes here */
-	return 0;
+thread_get_recent_cpu(void)
+{
+	/* recent_cpu에 100을 곱해서 반환 한다.
+	   해당 과정중에 인터럽트는 비활성되어야 한다. */
+	enum intr_level old_level;	/* 현재 인터럽트 상태를 저장하기 위한 변수 */
+
+	old_level = intr_disable();	/* 현재 인터럽트 상태를 저장하고 인터럽트를 비활성화 */
+	int new_recent_cpu = fp_to_int(mult_mixed(thread_current()->recent_cpu, 100));	/* 현재 쓰레드의 recent_cpu 값을 100배 확장하고, 고정 소수점 표현에서 정수로 변환함. */
+	intr_set_level(old_level);	/* 인터럽트 상태를 이전 상태로 복원 */
+
+	return new_recent_cpu;	/* recent_cpu 값을 반환 */
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
@@ -455,7 +618,7 @@ kernel_thread (thread_func *function, void *aux) {
 
 /* Does basic initialization of T as a blocked thread named
    NAME. */
-/* 쓰레드 초기화를 위해 사용 */
+/* 쓰레드를 초기화할 때 사용 */
 static void
 init_thread (struct thread *t, const char *name, int priority) {
 	ASSERT (t != NULL);	/* 입력 파라미터인 t가 NULL 포인터인지 확인 */
@@ -472,6 +635,9 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->init_priority = priority;	/* 쓰레드의 init_priority 필드를 입력받은 priority 값으로 설정, 쓰레드의 원래 우선 순위를 저장하는 역할 */
 	t->wait_on_lock = NULL;	/* 쓰레드가 현재 기다리고 있는 lock을 가리키는 포인터를 NULL로 설정함 */
 	list_init(&(t->donations));	/* 쓰레드가 받은 우선 순위 기부 목록을 초기화함. */
+
+	t->nice = NICE_DEFAULT;
+	t->recent_cpu = RECENT_CPU_DEFAULT;
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
@@ -685,3 +851,5 @@ void preempt_priority(void)
     if (curr->priority < ready->priority) // ready_list에 현재 실행중인 스레드보다 우선순위가 높은 스레드가 있으면
         thread_yield();
 }
+
+
