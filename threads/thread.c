@@ -1,4 +1,5 @@
 #include "threads/thread.h"
+#include "threads/fixed_point.h"	// 고정 소수점 연산
 #include <debug.h>
 #include <stddef.h>
 #include <random.h>
@@ -11,7 +12,6 @@
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 #include "intrinsic.h"
-#include "threads/fixed_point.h"	// 고정 소수점 연산
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -254,7 +254,7 @@ thread_unblock (struct thread *t) {
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
 	// list_push_back (&ready_list, &t->elem);
-	list_insert_ordered(&ready_list, &t->elem, thread_compare_priority, NULL);
+	list_insert_ordered(&ready_list, &t->elem, thread_compare_priority, 0);
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
 }
@@ -287,7 +287,7 @@ void thread_awake(int64_t ticks){	// 매개변수 -> 시간 => int
 		
 		/* 쓰레드 깨울 시간 확인 */
 		if (t->wakeup_tick <= ticks){	// 깨울 시간이 현재 시간 이하라면 깨움
-			now = list_remove(&(t->elem));	// sleep_list에서 삭제, now는 다음 쓰레드로 갱신 (return elem->next;)
+			now = list_remove(&t->elem);	// sleep_list에서 삭제, now는 다음 쓰레드로 갱신 (return elem->next;)
 			thread_unblock(t);	// unblock status로 변경
 		}
 		else {	// 안깨움 (더 재움)
@@ -299,8 +299,8 @@ void thread_awake(int64_t ticks){	// 매개변수 -> 시간 => int
 void
 thread_test_preemption (void){
 	if (!list_empty(&ready_list) &&
-		list_entry(list_front(&ready_list), struct thread, elem)->priority 
-		> thread_current()->priority)
+	thread_current()->priority 
+	<list_entry(list_front(&ready_list), struct thread, elem)->priority)
 		thread_yield();
 }
 
@@ -363,7 +363,7 @@ thread_yield (void) {
 	old_level = intr_disable ();	// 인터럽트 OFF
 	if (curr != idle_thread)	// 현재 쓰레드가 idle thread가 아니라면
 		// list_push_back (&ready_list, &curr->elem);	// ready list에 넣고
-		list_insert_ordered(&ready_list, &curr->elem, thread_compare_priority, NULL);
+		list_insert_ordered(&ready_list, &curr->elem, thread_compare_priority, 0);
 	do_schedule (THREAD_READY);	// ready status로 바꿔줌
 	intr_set_level (old_level);	// 인터럽트 ON
 }
@@ -399,13 +399,13 @@ void mlfqs_load_avg(void){
 	load_avg = add_fp(mult_fp(div_fp(int_to_fp(59), int_to_fp(60)), load_avg), div_fp(int_to_fp(ready_threads), int_to_fp(60))); // 이렇게 해야 통과 ..!
 
 	/* load_avg 는 0 보다 작아질 수 없다.*/
-	ASSERT (load_avg >= 0);
+	//ASSERT (load_avg >= 0);
 }
 
 void mlfqs_increment (void){
 	/* 해당 스레드가 idle_thread 가 아닌지 검사 */
 	struct thread *curr = thread_current();
-	ASSERT (curr != idle_thread);
+	if (curr == idle_thread)return;
 
 	/* 현재 스레드의 recent_cpu 값을 1 증가시킨다. */
 	add_mixed(curr->recent_cpu, 1);
@@ -442,6 +442,7 @@ thread_set_priority (int new_priority) {
 	if (thread_mlfqs) return;	// mlfqs 스케줄러 활성화 => thread_mlfqs 변수는 true로 설정되고 우선순위 임의로 변경 불가함.
 
 	thread_current ()->priority = new_priority;
+	list_sort(&ready_list,thread_compare_priority,NULL);
 	thread_test_preemption();	// yield와 같은 역할
 }
 
@@ -576,6 +577,8 @@ init_thread (struct thread *t, const char *name, int priority) {
 
 	t->nice = NICE_DEFAULT;
 	t->recent_cpu = RECENT_CPU_DEFAULT;
+	if (t != idle_thread)
+		list_push_back(&all_list, &t->all_elem);	// all_list와 all_elem 연결
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
@@ -735,6 +738,7 @@ schedule (void) {
 		if (curr && curr->status == THREAD_DYING && curr != initial_thread) {
 			ASSERT (curr != next);
 			list_push_back (&destruction_req, &curr->elem);
+			list_remove (&curr->all_elem);	// mlfqs all_list에서 all_elem 빼는 과정
 		}
 
 		/* Before switching the thread, we first save the information

@@ -97,6 +97,8 @@ struct thread {
 	int priority;                       /* Priority. */
 	int64_t wakeup_tick;						/* 깨울 시간 (ticks 값) */
 
+	struct lock *wait_on_lock;
+
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
 	struct list_elem all_elem;			/* all list의 element */
@@ -147,7 +149,9 @@ void thread_yield (void);
 
 int thread_get_priority (void);
 void thread_set_priority (int);
-bool thread_compare_priority(struct list_elem *l, struct list_elem *s,void *aux UNUSED);
+bool thread_compare_priority(struct list_elem *, struct list_elem *,void *aux UNUSED);
+
+void thread_test_preemption (void);
 
 /* mlfqs */
 int thread_get_nice (void);
