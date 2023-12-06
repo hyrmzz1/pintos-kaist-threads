@@ -158,12 +158,54 @@ error:
 	thread_exit ();
 }
 
+
+
+
+
+
+//process_execute original version
+// /* Switch the current execution context to the f_name.
+//  * Returns -1 on fail. */
+// int
+// process_exec (void *f_name) {
+// 	char *file_name = f_name;
+// 	bool success;
+// 	char* file_name_copy = strcpy(*file_name);
+
+
+// 	/* We cannot use the intr_frame in the thread structure.
+// 	 * This is because when current thread rescheduled,
+// 	 * it stores the execution information to the member. */
+// 	struct intr_frame _if;
+// 	_if.ds = _if.es = _if.ss = SEL_UDSEG;
+// 	_if.cs = SEL_UCSEG;
+// 	_if.eflags = FLAG_IF | FLAG_MBS;
+
+// 	/* We first kill the current context */
+// 	process_cleanup ();
+
+// 	/* And then load the binary */
+// 	success = load (file_name, &_if);
+
+// 	/* If load failed, quit. */
+// 	palloc_free_page (file_name);
+// 	if (!success)
+// 		return -1;
+
+// 	/* Start switched process. */
+// 	do_iret (&_if);
+// 	NOT_REACHED ();
+// }
+
+
 /* Switch the current execution context to the f_name.
  * Returns -1 on fail. */
 int
 process_exec (void *f_name) {
 	char *file_name = f_name;
 	bool success;
+	
+
 
 	/* We cannot use the intr_frame in the thread structure.
 	 * This is because when current thread rescheduled,
@@ -183,6 +225,9 @@ process_exec (void *f_name) {
 	palloc_free_page (file_name);
 	if (!success)
 		return -1;
+
+	//argument passing
+	hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true);
 
 	/* Start switched process. */
 	do_iret (&_if);
@@ -204,6 +249,7 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
+	while(1){}			//argument passing
 	return -1;
 }
 
@@ -320,6 +366,47 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
  * Stores the executable's entry point into *RIP
  * and its initial stack pointer into *RSP.
  * Returns true if successful, false otherwise. */
+
+
+
+
+//argument passing 
+void arg_stack(char ** argv, int argc, struct intr_frame *if_){
+	char* arg_addr[128];
+	
+	for(int i = argc-1; i>=0; i--){
+		int tmp_arg_len = strlen(argv[i]) + 1;
+		if_->rsp = if_->rsp - (tmp_arg_len);
+		memcpy(if_->rsp, argv[i], tmp_arg_len);
+		arg_addr[i] = if_->rsp;
+	}
+	while(if_->rsp % 8 != 0){
+		if_->rsp--;
+		//memcpy(if_->rsp, 0, 1);
+		*(uint8_t*)if_->rsp = 0;
+	}
+
+	for(int i = argc; i>=0; i--){
+		if_->rsp = if_->rsp - 8;
+
+		if(i == argc){
+			memset(if_->rsp, 0, sizeof(char**));
+		}
+		else{
+			memcpy(if_->rsp, &arg_addr[i], sizeof(char**));
+		}
+
+
+	}
+	if_->R.rdi = argc;
+	if_->R.rsi = if_->rsp;
+
+	if_->rsp = if_->rsp - 8;
+	memset(if_->rsp, 0, sizeof(void*));
+
+}
+
+
 static bool
 load (const char *file_name, struct intr_frame *if_) {
 	struct thread *t = thread_current ();
@@ -328,6 +415,23 @@ load (const char *file_name, struct intr_frame *if_) {
 	off_t file_ofs;
 	bool success = false;
 	int i;
+
+
+
+	//argument passing
+	char* arg_list[128];
+	char* token, *save_ptr;
+	int token_cnt = 0;
+	token = strtok_r(file_name, " ", &save_ptr);
+	arg_list[token_cnt] = token;
+
+	while(token != NULL){
+		token = strtok_r(NULL, " ", &save_ptr);
+		token_cnt++;
+		arg_list[token_cnt] = token;
+	}
+
+
 
 	/* Allocate and activate page directory. */
 	t->pml4 = pml4_create ();
@@ -417,7 +521,10 @@ load (const char *file_name, struct intr_frame *if_) {
 	/* TODO: Your code goes here.
 	 * TODO: Implement argument passing (see project2/argument_passing.html). */
 
+	//argument passing
+	arg_stack(arg_list, token_cnt, if_);
 	success = true;
+
 
 done:
 	/* We arrive here whether the load is successful or not. */
