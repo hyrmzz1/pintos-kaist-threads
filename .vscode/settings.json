@@ -1,0 +1,11 @@
+{
+    "files.associations": {
+        "list.h": "c",
+        "thread.h": "c",
+        "interrupt.h": "c",
+        "palloc.h": "c",
+        "vaddr.h": "c",
+        "fixed_point.h": "c",
+        "synch.h": "c"
+    }
+}
