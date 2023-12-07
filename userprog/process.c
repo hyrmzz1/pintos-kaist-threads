@@ -161,8 +161,8 @@ error:
 /* Switch the current execution context to the f_name.
  * Returns -1 on fail. */
 int
-process_exec (void *f_name) {
-	char *file_name = f_name;
+process_exec (void *f_name) {	// 프로그램 실행할 프로세스 생성. start_process()
+	char *file_name = f_name;	// %bin/ls -l foo bar
 	bool success;
 
 	/* We cannot use the intr_frame in the thread structure.
@@ -177,10 +177,12 @@ process_exec (void *f_name) {
 	process_cleanup ();
 
 	/* And then load the binary */
-	success = load (file_name, &_if);
+	success = load (file_name, &_if);	// user memory stack에 파싱한 토큰들 저장 (=> load() 내에서 palloc allocation 됨)
 
+	hex_dump(_if.rsp, _if.rsp, LOADER_PHYS_BASE - _if.rsp, true);
+	
 	/* If load failed, quit. */
-	palloc_free_page (file_name);
+	palloc_free_page (file_name);	// load() 끝난 후 메모리 반환
 	if (!success)
 		return -1;
 
@@ -208,6 +210,7 @@ process_wait (tid_t child_tid UNUSED) {
 }
 
 /* Exit the process. This function is called by thread_exit (). */
+// 리소스 해제
 void
 process_exit (void) {
 	struct thread *curr = thread_current ();
@@ -335,6 +338,17 @@ load (const char *file_name, struct intr_frame *if_) {
 		goto done;
 	process_activate (thread_current ());
 
+	/* filesys_open 전에 file_name 파싱.(첫 번째 토큰만 filename) */
+	// file_name: /bin/ls -l foo bar => file_name: /bin/ls, arguments: '-l', 'foo', 'bar'
+	char *argv[LOADER_ARGS_LEN / 2 + 1];	// read_command_line() 참고
+	int argc = 0;
+	char *token, *save_ptr;
+	for (token = strtok_r (file_name, " ", &save_ptr); token != NULL;
+		 token = strtok_r (NULL, " ", &save_ptr)){
+			argv[argc] = token;	// /bin/ls
+			argc++;
+	}
+
 	/* Open executable file. */
 	file = filesys_open (file_name);
 	if (file == NULL) {
@@ -416,6 +430,7 @@ load (const char *file_name, struct intr_frame *if_) {
 
 	/* TODO: Your code goes here.
 	 * TODO: Implement argument passing (see project2/argument_passing.html). */
+	argument_stack(if_, argv, argc);
 
 	success = true;
 
@@ -425,6 +440,44 @@ done:
 	return success;
 }
 
+/* user memory의 stack 영역에 arguments 넣기 */
+void argument_stack(struct intr_frame *if_, char **argv, int argc){
+	char *argument_address[LOADER_ARGS_LEN / 2 + 1];	// 인자의 스택 주소값 저장
+
+	/* arguments */
+	for(int i = argc - 1; i = 0; i--){
+		if_->rsp -= (strlen(argv[i]) + 1);	// 포인터 내리고
+		memcpy(if_->rsp, argv[i], strlen(argv[i]) + 1);	// 내린 만큼의 공간에 값을 지정한 바이트 만큼 넣기
+		argument_address[i] = if_->rsp;	// 인자의 스택 주소값 저장
+	}
+	
+	/* padding */
+	while(if_->rsp % 8 != 0){
+		if_->rsp--;	// 패딩 1byte씩 넣어주기 위해 포인터 1씩 내림.
+		memcpy(if_->rsp, NULL, 1);	// 그냥 1바이트만 넣으면 되니까 source는 NULL(or 0). NULL 값 1바이트만큼 채우기.
+		// *(uint8_t*)(if_->rsp) = 0;
+	}
+
+	/* sentinel value (배열의 맨 마지막 요소는 항상 널 포인터) */
+	// Type: char * ............ 아래처럼 쓰기만 해도 되나??
+	if_->rsp -= 8;
+	memcpy(if_->rsp, NULL, 8);	// 8바이트(주소값)만큼 NULL 값 채우기
+
+	/* argument's address */
+	memcpy(if_->rsp, NULL, 8);	// ??
+	for(int i = argc - 1; i = 0; i--){
+		if_->rsp -= 8;	// 포인터 내리고 (주소는 8bytes)
+		memcpy(if_->rsp, &argument_address[i], 8);	// argument_address는 포인터이므로 값을 넣으려면 '&' 붙이기
+	}
+
+	/* main */
+	if_->R.rdi = argc;	// 인자 개수
+	if_->R.rsi = if_->rsp;	// 가장 상위에 있는 인자 주소값
+
+	/* fake address */
+	if_->rsp -= 8;	// stack top
+	memcpy(if_->rsp, NULL, 8);	// 8바이트(주소값)만큼 NULL 값 채우기
+}
 
 /* Checks whether PHDR describes a valid, loadable segment in
  * FILE and returns true if so, false otherwise. */
@@ -544,7 +597,7 @@ setup_stack (struct intr_frame *if_) {
 	if (kpage != NULL) {
 		success = install_page (((uint8_t *) USER_STACK) - PGSIZE, kpage, true);
 		if (success)
-			if_->rsp = USER_STACK;
+			if_->rsp = USER_STACK;	// rsp를 user_stack의 시작 주소(=> rbp)로 설정 
 		else
 			palloc_free_page (kpage);
 	}

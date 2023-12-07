@@ -57,7 +57,7 @@ struct intr_frame {
 	uint16_t __pad5;
 	uint32_t __pad6;
 	uint64_t eflags;
-	uintptr_t rsp;
+	uintptr_t rsp;	// 스택 포인터 레지스터 (런타임 스택의 끝(top) 부분을 가리킴.)
 	uint16_t ss;
 	uint16_t __pad7;
 	uint32_t __pad8;
