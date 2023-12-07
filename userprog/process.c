@@ -179,7 +179,7 @@ process_exec (void *f_name) {	// 프로그램 실행할 프로세스 생성. sta
 	/* And then load the binary */
 	success = load (file_name, &_if);	// user memory stack에 파싱한 토큰들 저장 (=> load() 내에서 palloc allocation 됨)
 
-	hex_dump(_if.rsp, _if.rsp, LOADER_PHYS_BASE - _if.rsp, true);
+	hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true);
 	
 	/* If load failed, quit. */
 	palloc_free_page (file_name);	// load() 끝난 후 메모리 반환
@@ -206,6 +206,7 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
+	while (1){}	// process_wait()이 너무 빨리 끝나면 로깅 안될 수도 있음
 	return -1;
 }
 
@@ -445,27 +446,23 @@ void argument_stack(struct intr_frame *if_, char **argv, int argc){
 	char *argument_address[LOADER_ARGS_LEN / 2 + 1];	// 인자의 스택 주소값 저장
 
 	/* arguments */
-	for(int i = argc - 1; i = 0; i--){
+	for(int i = argc - 1; i >= 0; i--){
 		if_->rsp -= (strlen(argv[i]) + 1);	// 포인터 내리고
 		memcpy(if_->rsp, argv[i], strlen(argv[i]) + 1);	// 내린 만큼의 공간에 값을 지정한 바이트 만큼 넣기
 		argument_address[i] = if_->rsp;	// 인자의 스택 주소값 저장
 	}
 	
 	/* padding */
-	while(if_->rsp % 8 != 0){
-		if_->rsp--;	// 패딩 1byte씩 넣어주기 위해 포인터 1씩 내림.
-		memcpy(if_->rsp, NULL, 1);	// 그냥 1바이트만 넣으면 되니까 source는 NULL(or 0). NULL 값 1바이트만큼 채우기.
-		// *(uint8_t*)(if_->rsp) = 0;
-	}
+	int padding_size = if_->rsp % 8;
+	if_->rsp -= padding_size;	// 패딩 1byte씩 넣어주기 위해 포인터 1씩 내림.
+	memset(if_->rsp, 0, padding_size);	// 0이라는 data 넣기 => 0으로 초기화
 
 	/* sentinel value (배열의 맨 마지막 요소는 항상 널 포인터) */
-	// Type: char * ............ 아래처럼 쓰기만 해도 되나??
 	if_->rsp -= 8;
-	memcpy(if_->rsp, NULL, 8);	// 8바이트(주소값)만큼 NULL 값 채우기
+	memset(if_->rsp, 0, 8);	// 8바이트(주소값)만큼 0으로 초기화
 
 	/* argument's address */
-	memcpy(if_->rsp, NULL, 8);	// ??
-	for(int i = argc - 1; i = 0; i--){
+	for(int i = argc - 1; i >= 0; i--){
 		if_->rsp -= 8;	// 포인터 내리고 (주소는 8bytes)
 		memcpy(if_->rsp, &argument_address[i], 8);	// argument_address는 포인터이므로 값을 넣으려면 '&' 붙이기
 	}
@@ -476,7 +473,7 @@ void argument_stack(struct intr_frame *if_, char **argv, int argc){
 
 	/* fake address */
 	if_->rsp -= 8;	// stack top
-	memcpy(if_->rsp, NULL, 8);	// 8바이트(주소값)만큼 NULL 값 채우기
+	memset(if_->rsp, 0, 8);	// 8바이트(주소값)만큼을 0으로 초기화
 }
 
 /* Checks whether PHDR describes a valid, loadable segment in

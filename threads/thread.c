@@ -470,7 +470,7 @@ thread_yield (void) {
 //스레드에 선점 여부 테스트
 void
 thread_preemption(){
-	if(!list_empty(&ready_list)&&
+	if(!intr_context() && !list_empty(&ready_list)&&	//  `!intr_context ()` 넣어서 thread_yield(): assertion `!intr_context ()` failed 방지
 	thread_get_priority() 
 	<list_entry(list_front(&ready_list), struct thread, elem)->priority
 	)

@@ -6,6 +6,7 @@
         "palloc.h": "c",
         "vaddr.h": "c",
         "fixed_point.h": "c",
-        "synch.h": "c"
+        "synch.h": "c",
+        "process.h": "c"
     }
 }
