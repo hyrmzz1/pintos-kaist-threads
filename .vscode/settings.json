@@ -10,6 +10,9 @@
         "palloc.h": "c",
         "interrupt.h": "c",
         "debug.h": "c",
-        "timer.h": "c"
+        "timer.h": "c",
+        "flags.h": "c",
+        "process.h": "c",
+        "gdt.h": "c"
     }
 }
