@@ -263,6 +263,15 @@ thread_create (const char *name, int priority,
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
 
+	/* --- project 2: system call --- */
+	t->file_descriptor_table = palloc_get_multiple(PAL_ZERO, FDT_PAGES);
+	if (t->file_descriptor_table == NULL) {
+		return TID_ERROR;
+	}
+	t->fdidx = 2; // 0은 stdin, 1은 stdout에 이미 할당
+	t->file_descriptor_table[0] = 1; // stdin 자리: 1 배정
+	t->file_descriptor_table[1] = 2; // stdout 자리: 2 배정
+	
 	/* Add to run queue. */
 	thread_unblock (t);	/* 생성된 쓰레드를 실행 가능 상태로 만듦 */
 	preempt_priority();	/* 새로 생성된 쓰레드가 현재 실행 중인 쓰레드보다 높은 우선 순위를 가질 경우, 현재 쓰레드를 양보하고 새 쓰레드에게 실행 기회를 주기 위함 */
@@ -631,7 +640,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;	/* 쓰레드의 우선순위를 입력받은 priority 값으로 설정*/
 	t->magic = THREAD_MAGIC;	/* 쓰레드의 magic 필드를 THREAD_MAGIC 값으로 설정하여, 쓰레드 구조체의 유효성을 추후에 확인할 수 있음 */
-
+	t->exit_status = 0;	// 기본 종료 상태로 0을 설정하고 쓰레드가 종료될 때 이 값은 exit 함수에 의해 변경됨
 	t->init_priority = priority;	/* 쓰레드의 init_priority 필드를 입력받은 priority 값으로 설정, 쓰레드의 원래 우선 순위를 저장하는 역할 */
 	t->wait_on_lock = NULL;	/* 쓰레드가 현재 기다리고 있는 lock을 가리키는 포인터를 NULL로 설정함 */
 	list_init(&(t->donations));	/* 쓰레드가 받은 우선 순위 기부 목록을 초기화함. */
@@ -852,4 +861,21 @@ void preempt_priority(void)
         thread_yield();
 }
 
+// 파일 디스크립터 테이블에 새로운 파일을 추가하는 함수
+int add_file_to_fd_table(struct file *file) {
+	struct thread *t = thread_current();	// 현재 실행 중인 쓰레드를 가져옴
+	struct file **fdt = t->file_descriptor_table;	// 현재 쓰레드의 파일 디스크립터 테이블을 지정함
+	int fd = t->fdidx; // 파일 디스크립터 시작 번호를 현재 쓰레드의 fdidx 값으로 초기화함
+	
+	// FDCOUNT_LIMIT : 파일 디스크립터 테이블에서 관리할 수 있는 최대 파일 디스크립터의 수
+	while (t->file_descriptor_table[fd] != NULL && fd < FDCOUNT_LIMIT) {	// fd 값이 FDCOUNT_LIMIT에 도달하거나 빈 슬롯을 찾을 때까지
+		fd++;	// fd를 증가시킴
+	}
 
+	if (fd >= FDCOUNT_LIMIT) {	// 파일 디스크립터 테이블이 가득차있으면
+		return -1;	// -1을 반환함
+	}
+	t->fdidx = fd;	// 현재 쓰레드의 fdidx를 업데이트 (fdidx : 파일 디스크립터 인덱스)
+	fdt[fd] = file;	// 파일 디스크립터 테이블의 fd 위치에 파일 객체를 추가함
+	return fd;	// 할당된 파일 디스크립터 번호를 반환함
+}

@@ -13,6 +13,8 @@
         "timer.h": "c",
         "flags.h": "c",
         "process.h": "c",
-        "gdt.h": "c"
+        "gdt.h": "c",
+        "*.inc": "c",
+        "syscall.h": "c"
     }
 }

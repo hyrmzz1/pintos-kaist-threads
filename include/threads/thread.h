@@ -28,6 +28,9 @@ typedef int tid_t;
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
 
+#define FDT_PAGES 3
+#define FDT_COUNT_LIMIT FDT_PAGES *(1<<9) // limit fdidx
+
 /* A kernel thread or user process.
  *
  * Each thread structure is stored in its own 4 kB page.  The
@@ -116,6 +119,16 @@ struct thread {
 	/* Owned by thread.c. */
 	struct intr_frame tf;               /* Information for switching */
 	unsigned magic;                     /* Detects stack overflow. */
+
+	// 시스템 콜 관련 선언
+	int exit_status;	// exit() 함수에서 쓰레드가 종료될때 상태값을 저장하고 이것을 wait() 함수에서 해당 프로세스의 종료 상태를 확인하는 데 활용됨
+	struct file **file_descriptor_table; //FDT
+	int fdidx; // fd index
+
+	struct intr_frame parent_if; // _fork() 구현 때 사용, __do_fork() 함수
+	struct list child_list; // _wait() 구현 때 사용, process_wait() 함수
+	struct list_elem child_elem; // _wait() 구현 때 사용, process_wait() 함수
+	struct semaphore fork_sema; // _fork() 구현 시 사용, __do_fork() 함수 
 };
 
 /* If false (default), use round-robin scheduler.

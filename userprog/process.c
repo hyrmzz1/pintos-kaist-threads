@@ -48,15 +48,17 @@ process_create_initd (const char *file_name) {
 	if (fn_copy == NULL)
 		return TID_ERROR;
 	strlcpy (fn_copy, file_name, PGSIZE);
+
 	/* project 2. command line parsing */
-	// char *token, *last;
-	// token = strtok_r(file_name, " ", &last);
-	// tid = thread_create (token, PRI_DEFAULT, initd, fn_copy);
+	// 명령어 파싱 부분 추가
+	char *token, *last;
+	token = strtok_r(file_name, " ", &last);
+	tid = thread_create (token, PRI_DEFAULT, initd, fn_copy);
 	/* project 2. command line parsing */
 
 
 	/* Create a new thread to execute FILE_NAME. */
-	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
+	// tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
 	if (tid == TID_ERROR)
 		palloc_free_page (fn_copy);
 	return tid;
@@ -78,40 +80,103 @@ initd (void *f_name) {
 
 /* Clones the current process as `name`. Returns the new process's thread id, or
  * TID_ERROR if the thread cannot be created. */
+// 현재 쓰레드(부모)를 복제하여 새로운 쓰레드(자식)을 생성하는 함수
 tid_t
 process_fork (const char *name, struct intr_frame *if_ UNUSED) {
-	/* Clone current thread to new thread.*/
-	return thread_create (name,
-			PRI_DEFAULT, __do_fork, thread_current ());
+	/* --- Project 2: system call --- */
+	// 현재 실행 중인 쓰레드를 부모 쓰레드로 지정
+	struct thread *parent = thread_current();
+	// 부모 쓰레드의 인터럽트 프레임을 복사하여 부모의 상태를 저장함
+	memcpy(&parent->parent_if, if_, sizeof(struct intr_frame));
+	// thread_create 함수를 사용하여 새로운 쓰레드를 생성함
+	// __do_fork 함수는 새로운 쓰레드(자식)을 초기화하는 함수
+	tid_t pid = thread_create(name, PRI_DEFAULT, __do_fork, parent);
+	// 쓰레드 생성이 실패하면
+	// 오류 코드를 반환함
+	if (pid == TID_ERROR) {
+		return TID_ERROR;
+	}
+	// 생성된 자실 쓰레드를 찾음
+	struct thread *child = get_child(pid);
+	// 자식 쓰레드의 초기화가 완료될 때까지 부모 쓰레드가 대기함
+	sema_down(&child->fork_sema);
+	// 자식 쓰레드의 id를 반환
+	return pid;
+}
+
+// pid와 일치하는 자식 쓰레드를 찾아 반환하는 함수
+struct thread * get_child(int pid) {
+	// 현재 실행 중인 쓰래드의 정보를 가져옴
+	struct thread *cur = thread_current ();
+	// child_list는 현재 쓰레드의 자식 쓰레드 리스트
+	struct list *child_list = &cur->child_list;
+	// for 반복문을 사용하여 자식 리스트를 순회하면서 각 요소를 thread 구조체로 변환
+	for (struct list_elem *e = list_begin(child_list); e != list_end(child_list); e = list_next(e)){
+		struct thread *t = list_entry(e, struct thread, child_elem);
+		// 요소의 tid가 주어진 pid와 일치하면 해당 쓰레드 반환
+		// tid : 쓰레드를 구별하는 데 사용, pid : 프로세스를 구별하는 데 사용
+		if (t->tid == pid) {
+			return t;
+		}
+	}
+	// 자식 쓰레드를 찾지 못하면 NULL 반환
+	return NULL;
 }
 
 #ifndef VM
 /* Duplicate the parent's address space by passing this function to the
  * pml4_for_each. This is only for the project 2. */
+// 부모 쓰레드의 페이지를 복제하여 자식 쓰레드에 대한 새로운 페이지를 만들고
+// 이를 자식 쓰레드의 페이지 테이블에 추가하는 함수
 static bool
 duplicate_pte (uint64_t *pte, void *va, void *aux) {
+	// 현재 실행 중인 쓰레드를 current라는 변수에 저장
 	struct thread *current = thread_current ();
+	// 보조 데이터(aux)를 부모 쓰레드로 형변환하여 parent 변수에 저장
 	struct thread *parent = (struct thread *) aux;
+	// 부모 페이지
 	void *parent_page;
+	// 새 페이지
 	void *newpage;
+	// 쓰기 가능 여부
 	bool writable;
 
 	/* 1. TODO: If the parent_page is kernel page, then return immediately. */
-
+	// 만약 주어진 가상 주소(va)가 커널 주소인 경우, 함수는 즉시 false를 반환하고 종료
+	if is_kernel_vaddr(va) {
+		return false;
+	}
 	/* 2. Resolve VA from the parent's page map level 4. */
+	// 부모의 페이지 맵 레벨 4에서 주어진 가상 주소에 해당하는 페이지를 찾아 parent_page에 저장
 	parent_page = pml4_get_page (parent->pml4, va);
-
+	// 만야 부모 페이지를 찾을 수 없다면, 함수는 false를 반환하고 종료
+	if (parent_page == NULL) {
+		return false;
+	}
 	/* 3. TODO: Allocate new PAL_USER page for the child and set result to
 	 *    TODO: NEWPAGE. */
-
+	// 사용자 모드 페이지를 할당하여 newpage에 저장
+	// PAL_USER : 사용자 모드, PAL_ZERO : 페이지가 0으로 초기화
+	newpage = palloc_get_page(PAL_USER | PAL_ZERO);
+	// 새로운 페이지 할당에 실패했다면 false를 반환하고 종료
+	if (newpage == NULL) {
+		return false;
+	}
 	/* 4. TODO: Duplicate parent's page to the new page and
 	 *    TODO: check whether parent's page is writable or not (set WRITABLE
 	 *    TODO: according to the result). */
+	// 부모 페이지의 내용을 새 페이지로 복사함
+	memcpy(newpage, parent_page, PGSIZE);
+	// 페이지 테이블 엔트리가 쓰기 가능한지 여부를 확인하여 writable 변수에 저장
+	writable = is_writable(pte);
 
 	/* 5. Add new page to child's page table at address VA with WRITABLE
 	 *    permission. */
+	// 현재 쓰레드의 페이지 테이블(current->pml4)에 새로운 페이지(newpage)를 주어진 가상 주소(va)에 매핑
+	// 실패할 경우 false 반환
 	if (!pml4_set_page (current->pml4, va, newpage, writable)) {
 		/* 6. TODO: if fail to insert page, do error handling. */
+		return false;
 	}
 	return true;
 }
@@ -147,6 +212,7 @@ __do_fork (void *aux) {
 	if (!pml4_for_each (parent->pml4, duplicate_pte, parent))
 		goto error;
 #endif
+	
 
 	/* TODO: Your code goes here.
 	 * TODO: Hint) To duplicate the file object, use `file_duplicate`
@@ -154,14 +220,34 @@ __do_fork (void *aux) {
 	 * TODO:       from the fork() until this function successfully duplicates
 	 * TODO:       the resources of parent.*/
 
+	if (parent->fdidx == FDCOUNT_LIMIT) {
+		goto error;
+	}
+	current->file_descriptor_table[0] = parent->file_descriptor_table[0];
+	current->file_descriptor_table[1] = parent->file_descriptor_table[1];
+
+	for (int i = 2; i < FDCOUNT_LIMIT; i++) {
+		struct file * f = parent->file_descriptor_table[i];
+		if (f == NULL){
+			continue;
+		}
+		current->file_descriptor_table[i] = file_duplicate(f);
+	}
+	current->fdidx = parent->fdidx;
+	sema_up(&current->fork_sema);
+	if_.R.rax = 0;
 	process_init ();
 
 	/* Finally, switch to the newly created process. */
 	if (succ)
 		do_iret (&if_);
 error:
-	thread_exit ();
+	current->exit_status = TID_ERROR;
+	sema_up(&current->fork_sema);
+	exit(TID_ERROR);
+	//thread_exit ();
 }
+
 
 /* Switch the current execution context to the f_name.
  * Returns -1 on fail. */
@@ -396,21 +482,19 @@ load (const char *file_name, struct intr_frame *if_) {
 	bool success = false;
 	int i;
 
-	/* --- Project 2: Command_line_parsing ---*/
-	char *arg_list[128];
-	char *token, *save_ptr;
-	int token_count = 0;
+	// 명령행 인수를 파싱(command line parsing)하여 arg_list 배열에 저장
+	char *arg_list[128];	// 명령행 인수를 저장할 배열을 선언함
+	char *token, *save_ptr;	// 문자열 토크나이징에 사용할 포인터 변수를 선언
+	int token_count = 0;	// 토큰의 수를 추적하는 변수를 초기화함
  
-	token = strtok_r(file_name, " ", &save_ptr); // 첫번째 이름
-	arg_list[token_count] = token; //arg_list[0] = file_name_first
+	token = strtok_r(file_name, " ", &save_ptr); // strtok_r 함수를 사용하여 파일 이름에서 첫 번째 토큰(명령행 인수)을 추출하고
+	arg_list[token_count] = token; // arg_list의 첫 번째 원소에 저장함
 	
-	while (token != NULL) {
-		token = strtok_r (NULL, " ", &save_ptr);
+	while (token != NULL) {	// 남은 인수들을 추출하여 arg_list에 저장하는 반복문
+		token = strtok_r (NULL, " ", &save_ptr);	// strtok_r 함수는 문자열을 공백 문자("")를 기준으로 토큰화함
 		token_count++;
 		arg_list[token_count] = token;
 	}
-	/* --- Project 2: Command_line_parsing ---*/
-
 
 	/* Allocate and activate page directory. */
 	t->pml4 = pml4_create ();
