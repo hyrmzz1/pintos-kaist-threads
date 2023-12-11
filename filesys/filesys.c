@@ -69,7 +69,7 @@ filesys_create (const char *name, off_t initial_size) {
 		free_map_release (inode_sector, 1);
 	dir_close (dir);
 
-	return success;
+	return success;	// return value=> boolean type
 }
 
 /* Opens the file with the given NAME.
@@ -99,7 +99,7 @@ filesys_remove (const char *name) {
 	bool success = dir != NULL && dir_remove (dir, name);
 	dir_close (dir);
 
-	return success;
+	return success;	// return value: boolean type
 }
 
 /* Formats the file system. */

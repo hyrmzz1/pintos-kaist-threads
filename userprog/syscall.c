@@ -8,6 +8,9 @@
 #include "threads/flags.h"
 #include "intrinsic.h"
 #include "userprog/process.h"
+#include "filesys/filesys.h"
+#include "threads/vaddr.h"
+#include "threads/mmu.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -51,6 +54,7 @@ void seek (int fd, unsigned position);
 unsigned tell (int fd);
 void close (int fd);
 int dup2 (int oldfd, int newfd);
+void check_address (void *addr);
 
 void
 syscall_init (void) {
@@ -85,12 +89,12 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		// case SYS_WAIT :
 		// 	wait ();	
 		// 	break;
-		// case SYS_CREATE :
-		// 	create ();		
-		// 	break;
-		// case SYS_REMOVE :
-		// 	remove ();
-		// 	break;
+		case SYS_CREATE :
+			create (f->R.rdi, f->R.rsi);		
+			break;
+		case SYS_REMOVE :
+			remove (f->R.rdi);
+			break;
 		// case SYS_OPEN :
 		// 	open ();
 		// 	break;
@@ -162,17 +166,28 @@ wait (pid_t pid) {
 // create != open
 bool
 create (const char *file, unsigned initial_size) {
-	// 성공적으로 파일 생성 => true 반환
-	// 파일 생성 실패 => false 반환
+	check_address(file);
+
+	// 성공적으로 파일 생성(success) => true 반환, 파일 생성 실패(!success) => false 반환
+	return filesys_create(file, initial_size);
 }
 
-/* parameter이라는 이름의 파일 삭제 */
+/* parameter이라는 이름의 파일 삭제 (파일 open, close 상태와 무관) */
 // remove != close
 bool
 remove (const char *file) {
-	// 성공적으로 파일 삭제 => true 반환
-	// 파일 삭제 실패 => false 반환
-	// 파일 열리거나 닫힌 상태와 무관하게 삭제 가능
+	check_address(file);
+
+	// 성공적으로 파일 삭제(success) => true 반환, 파일 삭제 실패(!success) => false 반환
+	return filesys_remove(file);
+}
+
+/* 주소 값이 유저 영역에서 사용하는 주소 값인지 확인 */
+void check_address (void *addr){
+	struct thread *curr = thread_current();
+	// 주소 값이 유저 영역 벗어난 영역 => exit(-1)	// 프로세스 종료
+	if (is_kernel_vaddr(addr) || addr == NULL || pml4_get_page(curr->pml4, addr) == NULL)	// addr가 유저 영역에 위치하지 않거나 NULL이거나 매핑된 물리 메모리 주소가
+		exit(-1);	// 프로세스 종료
 }
 
 /* parameter이라는 이름을 가진 파일 열기  */
