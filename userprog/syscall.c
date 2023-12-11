@@ -81,40 +81,40 @@ syscall_handler (struct intr_frame *f UNUSED) {
 			exit (f->R.rdi);	
 			break;
 		// case SYS_FORK :
-		// 	fork ();
+		// 	f->R.rax = fork ();
 		// 	break;
 		// case SYS_EXEC :
-		// 	exec ();	
+		// 	f->R.rax = exec ();	
 		// 	break;
 		// case SYS_WAIT :
-		// 	wait ();	
+		// 	f->R.rax = wait ();	
 		// 	break;
 		case SYS_CREATE :
-			create (f->R.rdi, f->R.rsi);		
+			f->R.rax = create (f->R.rdi, f->R.rsi);
 			break;
 		case SYS_REMOVE :
-			remove (f->R.rdi);
+			f->R.rax = remove (f->R.rdi);
 			break;
 		// case SYS_OPEN :
-		// 	open ();
+		// 	f->R.rax = open ();
 		// 	break;
 		// case SYS_FILESIZE :
-		// 	filesize ();
+		// 	f->R.rax = filesize ();
 		// 	break;
 		// case SYS_READ :
-		// 	read ();
+		// 	f->R.rax = read ();
 		// 	break;
 		case SYS_WRITE :	
 			f->R.rax = write (f->R.rdi, f->R.rsi,f->R.rdx);
 			break;
 		// case SYS_SEEK :
-		// 	seek ();
+		// 	f->R.rax = seek ();
 		// 	break;
 		// case SYS_TELL :
-		// 	tell ();
+		// 	f->R.rax = tell ();
 		// 	break;
 		// case SYS_CLOSE :	
-		// 	close ();
+		// 	f->R.rax = close ();
 		// 	break;
 		// default:
 		// 	break;
@@ -186,7 +186,7 @@ remove (const char *file) {
 void check_address (void *addr){
 	struct thread *curr = thread_current();
 	// 주소 값이 유저 영역 벗어난 영역 => exit(-1)	// 프로세스 종료
-	if (is_kernel_vaddr(addr) || addr == NULL || pml4_get_page(curr->pml4, addr) == NULL)	// addr가 유저 영역에 위치하지 않거나 NULL이거나 매핑된 물리 메모리 주소가
+	if (is_kernel_vaddr(addr) || addr == NULL || pml4_get_page(curr->pml4, addr) == NULL)	// addr가 유저 영역에 위치하지 않거나 NULL이거나 매핑된 물리 메모리 주소가 없다면
 		exit(-1);	// 프로세스 종료
 }
 
@@ -215,8 +215,9 @@ write (int fd, const void *buffer, unsigned size) {
 	// 실제로 쓰여진 바이트 수 반환
 	// 일부 바이트 쓰이지 않은 경우 size 보다 작을 수 있음
 	// 파일 확장 구현 X.
-	printf("%s", buffer);	
-	return 0;
+	check_address(buffer);
+	putbuf(buffer, size);
+	return size;
 }
 
 /* open file fd에서 다음에 읽거나 쓸 바이트를 파일의 시작부터 바이트로 표시된 position으로 변경 */
