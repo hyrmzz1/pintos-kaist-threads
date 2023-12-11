@@ -131,6 +131,9 @@ struct thread {
 	struct intr_frame tf;               /* Information for switching */
 	unsigned magic;                     /* Detects stack overflow. */
 	int64_t wakeup; // 깨어나야 하는 ticks 값
+
+	/* system call */
+	int exit_status;	// 0이면 성공, 나머지 값들은 에러.
 };
 
 /* If false (default), use round-robin scheduler.

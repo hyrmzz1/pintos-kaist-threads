@@ -179,7 +179,7 @@ process_exec (void *f_name) {	// 프로그램 실행할 프로세스 생성. sta
 	/* And then load the binary */
 	success = load (file_name, &_if);	// user memory stack에 파싱한 토큰들 저장 (=> load() 내에서 palloc allocation 됨)
 
-	hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true);
+	// hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true);
 	
 	/* If load failed, quit. */
 	palloc_free_page (file_name);	// load() 끝난 후 메모리 반환
@@ -206,7 +206,8 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
-	while (1){}	// process_wait()이 너무 빨리 끝나면 로깅 안될 수도 있음
+	// while (1){}	// process_wait()이 너무 빨리 끝나면 로깅 안될 수도 있음
+	for (int i = 0; i < 1000000000; i++);
 	return -1;
 }
 
