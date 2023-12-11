@@ -129,10 +129,9 @@ halt (void) {
 /* 현재 동작 중인 유저 프로그램 종료 + 커널에 상태 리턴 */
 void
 exit (int status) {
-	// 부모 프로세스가 유저 프로세스의 종료를 기다리는 경우, 이 상태가 반환됨(아래 참조). 
-	// 전통적으로, 상태(status)가 0인 경우 성공, 0이 아닌 값은 오류를 나타냄.
+	struct thread *curr = thread_current();	// 현재 동작 중인 쓰레드 (프로세스라고 봐도 무방)
+	curr->exit_status = status;	// status가 0이면 성공, 그 외의 값이면 에러.
 	printf("%s: exit(%d)\n", thread_name(), status);
-	// todo - exit_status에 저장하기
 	thread_exit();
 }
 
