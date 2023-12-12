@@ -225,7 +225,6 @@ process_exit (void) {
 	 * TODO: We recommend you to implement process resource cleanup here. */
 
 	/* 프로세스에 열려있는 모든 파일 닫음 */
-
 	for(int i = FD_LIMIT - 1; i >= 2; i--){
 		struct file *tmpfile = curr->fd_table[i];
 		file_close(tmpfile);
@@ -275,7 +274,7 @@ void process_close_file (int fd){
 	struct file * fileobj = thread_current()->fd_table[fd];
 	if(thread_current()->fd_table[fd] == NULL)	// 테이블에서 제외
 		return;
-
+	thread_current()->fd_table[fd] = NULL;
 	file_close(fileobj);	// fd table 해당 엔트리 초기화 (객체 삭제) (메모리 누수 예방 위함)
 }
 

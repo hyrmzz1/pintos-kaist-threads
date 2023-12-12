@@ -198,12 +198,15 @@ open (const char *file) {
 	if (newfile == NULL)	// 파일 열기 실패
 		return -1;	// int type이니까
 
+	// 예외 처리 - 파일 열었는데 fd에 파일 넣을 수 없는 경우 => close() 해주기
+
 	return process_add_file(newfile);	// 파일에 fd 부여 - 0(STDIN),1(STDOUT),2(STDERR)는 안됨
 }
 
 /* fd로서 열려있는 파일의 크기 반환 (바이트 단위) */
 int
 filesize (int fd) {
+
 }
 
 /* buffer 안에 fd로 열려있는 파일로부터 size 바이트 읽고, 실제 읽은 바이트 수 반환 */
@@ -239,8 +242,8 @@ tell (int fd) {
 /* Close file descriptor fd. */
 void
 close (int fd) {
-	//  Exiting or terminating a process => 프로세스의 열려있는 fd들 닫음.
-	// fd table에 해당 entry 초기화
+	process_close_file(fd);	// 해당 fd 닫고 fd table에서 해당 entry 초기화
+	return;
 }
 
 int
