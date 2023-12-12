@@ -95,12 +95,12 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		case SYS_REMOVE :
 			f->R.rax = remove (f->R.rdi);
 			break;
-		// case SYS_OPEN :
-		// 	f->R.rax = open ();
-		// 	break;
-		// case SYS_FILESIZE :
-		// 	f->R.rax = filesize ();
-		// 	break;
+		case SYS_OPEN :
+			f->R.rax = open (f->R.rdi);
+			break;
+		case SYS_FILESIZE :
+			f->R.rax = filesize (f->R.rdi);
+			break;
 		// case SYS_READ :
 		// 	f->R.rax = read ();
 		// 	break;
@@ -113,11 +113,11 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		// case SYS_TELL :
 		// 	f->R.rax = tell ();
 		// 	break;
-		// case SYS_CLOSE :	
-		// 	f->R.rax = close ();
-		// 	break;
-		// default:
-		// 	break;
+		case SYS_CLOSE :	
+			close (f->R.rdi);	// void니까 레지스터에 할당 X
+			break;
+		default:
+			break;
 	}
 	// printf ("system call!\n");
 	// thread_exit ();
@@ -193,8 +193,12 @@ void check_address (void *addr){
 /* parameter이라는 이름을 가진 파일 열기  */
 int
 open (const char *file) {
-	// 성공적으로 파일 열림 => 0보다 크거나 같은 정수(fd) 반환
-	// 파일 열기 실패 => -1 반환
+	check_address(file);
+	struct file *newfile = filesys_open(file);	// 파일 open
+	if (newfile == NULL)	// 파일 열기 실패
+		return -1;	// int type이니까
+
+	return process_add_file(newfile);	// 파일에 fd 부여 - 0(STDIN),1(STDOUT),2(STDERR)는 안됨
 }
 
 /* fd로서 열려있는 파일의 크기 반환 (바이트 단위) */
@@ -236,6 +240,7 @@ tell (int fd) {
 void
 close (int fd) {
 	//  Exiting or terminating a process => 프로세스의 열려있는 fd들 닫음.
+	// fd table에 해당 entry 초기화
 }
 
 int

@@ -18,6 +18,7 @@
         "intrinsic.h": "c",
         "mmu.h": "c",
         "*.inc": "c",
-        "filesys.h": "c"
+        "filesys.h": "c",
+        "file.h": "c"
     }
 }

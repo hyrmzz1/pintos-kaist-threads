@@ -134,6 +134,8 @@ struct thread {
 
 	/* system call */
 	int exit_status;	// 0이면 성공, 나머지 값들은 에러.
+	struct file **fd_table;	// file의 포인터들을 저장. 각 프로세스는 자신의 fd table을 가짐.
+	int fd_idx;
 };
 
 /* If false (default), use round-robin scheduler.
@@ -195,5 +197,7 @@ void mlfqs_load_avg(void);
 void mlfqs_increment(void);
 void mlfqs_recalc(void);
 
+#define FD_LIMIT (1<<9)
+#define FD_SIZE 3	// fd 초기상태. ?? 왜 3이냐면 .. 012 => 미리 지정된 상태니까.
 
 #endif /* threads/thread.h */

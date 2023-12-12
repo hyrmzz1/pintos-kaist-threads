@@ -249,8 +249,7 @@ thread_print_stats (void) {
    PRIORITY, but no actual priority scheduling is implemented.
    Priority scheduling is the goal of Problem 1-3. */
 tid_t
-thread_create (const char *name, int priority,
-		thread_func *function, void *aux) {
+thread_create (const char *name, int priority, thread_func *function, void *aux) {
 	struct thread *t;
 	tid_t tid;
 
@@ -275,6 +274,13 @@ thread_create (const char *name, int priority,
 	t->tf.ss = SEL_KDSEG;
 	t->tf.cs = SEL_KCSEG;
 	t->tf.eflags = FLAG_IF;
+
+	/* file descriptor table */
+	t->fd_table = palloc_get_multiple(PAL_ZERO , 2);
+	t->fd_idx = 2;	// 현재 테이블에 존재하는 fd값의 최대값 + 1 (=> 새로운 파일 들어갈 위치)
+	t->fd_table[0] = 0;	// ?? STDIN. 표준 입력은 int 0?!
+	t->fd_table[1] = 1;	// ?? STDOUT
+	// t->fd_table[2] = 2;	// ?? STDERR
 
 	/* Add to run queue. */
 	thread_unblock (t);

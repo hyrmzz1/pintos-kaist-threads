@@ -224,7 +224,59 @@ process_exit (void) {
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
 
+	/* 프로세스에 열려있는 모든 파일 닫음 */
+
+	for(int i = FD_LIMIT - 1; i >= 2; i--){
+		struct file *tmpfile = curr->fd_table[i];
+		file_close(tmpfile);
+	}
+
+	palloc_free_multiple(curr->fd_table, 2);	// fd table 메모리 해제. ??2
+
 	process_cleanup ();
+}
+
+/* 파일 객체에 대한 파일 디스크립터 생성 */
+int process_add_file (struct file *f){
+	struct thread *curr = thread_current();
+	// 파일 객체를 fd table에 추가
+	// fd 최대값 1 추가
+	// fd 리턴
+	// struct file **fdt  = curr->fd_table;
+	int i;
+	for(i = 2; i < FD_LIMIT; i++){
+		if (curr->fd_table[i] == NULL){
+			curr->fd_table[i] = f;
+			break;
+		}
+	}
+
+	if (i == FD_LIMIT)
+		return -1;
+	
+	return i;	// 인덱스가 곧 fd이니라.... (????????????????????)
+}
+
+/* 프로세스의 파일 디스크립터 테이블 검색해 파일 객체의 주소 리턴 */
+struct file *process_get_file (int fd){
+	if(fd>FD_LIMIT || fd < 0)
+		return NULL;
+
+	struct thread *curr = thread_current();	
+	return curr->fd_table[fd]; 
+}
+
+/* 파일 디스크립터에 해당하는 파일 닫고 해당 엔트리 초기화 */
+void process_close_file (int fd){
+	if(fd>FD_LIMIT || fd < 0)
+		return NULL;
+
+	/* fd에 해당하는 파일 닫음 */
+	struct file * fileobj = thread_current()->fd_table[fd];
+	if(thread_current()->fd_table[fd] == NULL)	// 테이블에서 제외
+		return;
+
+	file_close(fileobj);	// fd table 해당 엔트리 초기화 (객체 삭제) (메모리 누수 예방 위함)
 }
 
 /* Free the current process's resources. */
