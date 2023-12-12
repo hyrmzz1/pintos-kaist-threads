@@ -265,6 +265,20 @@ thread_create (const char *name, int priority,
 	init_thread (t, name, priority);
 	tid = t->tid = allocate_tid ();
 
+	//system call
+	struct thread *cur = thread_current();
+	list_push_back(&cur->child_list, &t->chlid_elem);
+
+	t->fd_table = palloc_get_multiple(PAL_ZERO, FDT_PAGES);
+	if(t->fd_table == NULL)return TID_ERROR;
+	t->fd_idx = 2;
+	t->fd_table[0] = 1;
+	t->fd_table[1] = 2;
+
+
+
+
+
 	/* Call the kernel_thread if it scheduled.
 	 * Note) rdi is 1st argument, and rsi is 2nd argument. */
 	t->tf.rip = (uintptr_t) kernel_thread;
@@ -470,10 +484,14 @@ thread_yield (void) {
 //스레드에 선점 여부 테스트
 void
 thread_preemption(){
-	if(!list_empty(&ready_list)&&
+	if(!intr_context() && !list_empty(&ready_list)&&
 	thread_get_priority() 
 	<list_entry(list_front(&ready_list), struct thread, elem)->priority
 	)
+	// if(!list_empty(&ready_list)&&
+	// thread_get_priority() 
+	// <list_entry(list_front(&ready_list), struct thread, elem)->priority
+	// )
 	thread_yield();
 }
 
@@ -664,6 +682,15 @@ init_thread (struct thread *t, const char *name, int priority) {
 	 //mlfqs관련 변경
 	 t->nice = NICE_DEFAULT;
 	 t->recent_cpu = RECENT_CPU_DEFAULT;
+
+	//system call 변경
+	list_init(&t->child_list);
+	sema_init(&t->wait_sema, 0);
+	sema_init(&t->fork_sema, 0);
+	sema_init(&t->free_sema, 0);
+	//t->exit_status = 0;//system call도전
+
+
 	 if(t != idle_thread)
 	 	list_push_back(&all_list, &t->all_elem);
 }

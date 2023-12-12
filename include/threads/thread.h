@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+#include "threads/synch.h"		//system call 추가
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -117,11 +118,11 @@ struct thread {
 	struct list_elem donation_elem;
 	
 
-
-#ifdef USERPROG
+//system call에 사용하기 위해서 블럭 주석처리
+//#ifdef USERPROG
 	/* Owned by userprog/process.c. */
 	uint64_t *pml4;                     /* Page map level 4 */
-#endif
+//#endif
 #ifdef VM
 	/* Table for whole virtual memory owned by thread. */
 	struct supplemental_page_table spt;
@@ -131,6 +132,28 @@ struct thread {
 	struct intr_frame tf;               /* Information for switching */
 	unsigned magic;                     /* Detects stack overflow. */
 	int64_t wakeup; // 깨어나야 하는 ticks 값
+
+	//system call 수정사항
+	struct list child_list;
+	struct list_elem chlid_elem;
+	struct semaphore wait_sema;		//자식 프로세스가 종료할때까지 대기함
+
+	int exit_status;
+
+	struct intr_frame parent_if; 
+	struct semaphore fork_sema;				//fork 완료 할때까지 부모가 기다리게 함
+	struct semaphore free_sema; 			//자식 종료할 때까지 종료 대기
+
+
+	//system call file descriptor
+	struct file **fd_table;
+	int fd_idx;
+	
+	struct file *running;
+
+
+
+
 };
 
 /* If false (default), use round-robin scheduler.
@@ -192,5 +215,9 @@ void mlfqs_load_avg(void);
 void mlfqs_increment(void);
 void mlfqs_recalc(void);
 
+
+//system call 
+#define FDT_PAGES 3
+#define FDCOUNT_LIMIT FDT_PAGES * (1<<9)
 
 #endif /* threads/thread.h */
