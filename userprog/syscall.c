@@ -119,7 +119,7 @@ int add_file_to_fdt(struct file *file){
 	for(int idx = cur->fd_idx; idx <FDCOUNT_LIMIT; idx++){
 		if(fdt[idx] == NULL){
 			fdt[idx] = file;
-			cur->fd_idx = idx+1;
+			cur->fd_idx = idx;
 			return cur->fd_idx;
 		}
 	}
@@ -226,113 +226,140 @@ remove (const char *file) {
 
 int open(const char *file){
 	check_addr(file);
+	lock_acquire(&filesys_lock);
 	struct file* fileobj = filesys_open(file);
 	if(fileobj == NULL)return -1;
 
-	struct thread *cur = thread_current();
-	struct file** ft = cur->fd_table;
-	int idx;
-	for(idx = 0; idx <FDCOUNT_LIMIT; idx++){
-		if(ft[idx] == NULL){
-			ft[idx] = fileobj;
-			break;
-		}
-	}
-	int fd = idx;
-	if(idx == FDCOUNT_LIMIT){
-		//file_close(fileobj);
-		return -1;
-	}
-
+	int fd = add_file_to_fdt(fileobj);
+	if(fd == -1)file_close(fileobj);
+	lock_release(&filesys_lock);
 	return fd;
 }
 
 
 void
 close(int fd){
-	if(fd < 2 || fd >= FDCOUNT_LIMIT)return;
-	struct thread *cur = thread_current();
-	struct file *fileobj = cur->fd_table[fd];
-	cur->fd_table[fd] = NULL;
+	// if(fd < 2 || fd >= FDCOUNT_LIMIT)return;
+	// struct thread *cur = thread_current();
+	// struct file *fileobj = cur->fd_table[fd];
+	// if(fileobj == NULL)return;
+	// //check_addr(fileobj);
+	// cur->fd_table[fd] = NULL;
+
+	if(fd<2)return;
+	struct file *fileobj = find_file_by_fd(fd);
+	if(fileobj == NULL)return;
+	remove_file_from_fdt(fd);
 	file_close(fileobj);
 }
 
 
 int
 filesize (int fd) {
-	if(fd < 0 || fd > FDCOUNT_LIMIT) return -1;
-	struct thread *cur = thread_current();
-	struct file *fileobj = thread_current()->fd_table[fd];
+	// if(fd < 0 || fd > FDCOUNT_LIMIT) return -1;
+	// struct thread *cur = thread_current();
+	// struct file *fileobj = thread_current()->fd_table[fd];
+	struct file *fileobj = find_file_by_fd(fd);
 	if(fileobj == NULL)return -1;
-	return filesize(fileobj);
+	return file_length(fileobj);
 }
 
 
 int 
 read (int fd, void *buffer, unsigned size){
 	check_addr(buffer);
-	if(fd<0 || fd>FDCOUNT_LIMIT)return -1;
+	//check_addr(buffer + size - 1);
+	//if(fd<0 || fd>=FDCOUNT_LIMIT)return -1;
 	
 
-	//lock aquire
-	lock_acquire(&filesys_lock);
 	struct file *tmpf = find_file_by_fd(fd);
 	if(tmpf == NULL)return -1;
-	char * tmpbuf = buffer;
-	int readsize;
+	if(tmpf == STDOUT)return -1;
+	int readsize;//
 
 	if(tmpf == STDIN){
-		struct file *fileobj = thread_current()->fd_table[fd];
-
-		for(int readsize = 0; readsize<size; readsize++){
+		unsigned char * tmpbuf = buffer;
+		for(readsize = 0; readsize<size; readsize++){
 			char c = input_getc();
+			//printf("!!!!!!%c\n", c);			//test
 			*tmpbuf++ = c;
 			if(c == '\0')
 				break;
 		}
 	}
 	else{
+		//lock aquire
+		lock_acquire(&filesys_lock);
 		readsize = file_read(tmpf, buffer, size);
+		lock_release(&filesys_lock);
 	}
-	lock_release(&filesys_lock);
 	return readsize;
 }
 
 
 int 
-write (int fd, const void *buffer, unsigned size){ 
+write (int fd, const void *buffer, unsigned size){
+	check_addr(buffer);
+	if(fd < 0 || fd >= FDCOUNT_LIMIT)return -1;
+	int writesize;
+	struct file *tmpf = find_file_by_fd(fd);
+	if(tmpf == NULL || tmpf == STDIN)return -1;
+	
+	if(tmpf == STDOUT){
+		putbuf(buffer, size);
+		writesize = size;
+	}
+	else{
+		lock_acquire(&filesys_lock);
+		writesize = file_write(tmpf, buffer, size);
+		lock_release(&filesys_lock);
+	}
 
-	putbuf(buffer, size);
-	return 0;
+	return writesize;
 }
 
 
 tid_t
-fork (const char *thread_name){}
+fork (const char *thread_name){
+	struct thread* cur = thread_current();
+	return process_fork(thread_name, &cur->parent_if);
+}
 
 
 int
-exec (const char *file) {}
+exec (const char *file) {
+	check_addr(file);
+	int file_size = strlen(file) + 1;
+	//file_length로 사용하면 문제가 발생하나?
+	struct file *file_copy = palloc_get_page(PAL_ZERO);
+	if(file_copy == NULL)exit(-1);
+	strlcpy(file_copy, file, file_size);
+	if(process_exec(file_copy) == -1)return -1;
+	NOT_REACHED();
+	return 0;
+
+}
 
 
 
 
 void
 seek (int fd, unsigned position) {
-	// if(fd < 0 || fd > FDCOUNT_LIMIT)return;
-	// struct file *fileobj = thread_current()->fd_table[fd];
-	// if(fileobj <= 2)return;
-	// //fileobj->pos = position;
-
+	if(fd < 2 || fd > FDCOUNT_LIMIT)return;
+	struct file *fileobj = thread_current()->fd_table[fd];
+	if(fileobj == NULL)return;
+	if(fileobj <= 2)return;
+	//fileobj->pos = position;
+	file_seek(fileobj, position);
 }
 	
 
 unsigned
 tell (int fd) {
-	// if(fd < 0 || fd > FDCOUNT_LIMIT)return -1;
-	// struct file *fileobj = thread_current()->fd_table[fd];
-	// if(fileobj < 2)return ;
-	// return file_tell(fileobj);
+	if(fd < 0 || fd > FDCOUNT_LIMIT)return -1;
+	struct file *fileobj = thread_current()->fd_table[fd];
+	if(fileobj < 2)return ;
+	return file_tell(fileobj);
 }
 
 int
@@ -341,17 +368,6 @@ dup2 (int oldfd, int newfd){
 }
 
 
-// int
-// exec (const char *file) {
-// 	//struct thread* cur = thread_current();
-// 	check_addr(file);
-// 	int file_size = strlen(file) + 1;
-// 	char *file_copy = palloc_get_page(PAL_ZERO);
-// 	if(file_copy == NULL)exit(-1);
-// 	strlcpy(file_copy, file, file_size);
-// 	if(process_exec(file_copy) == -1)return -1;
-// 	NOT_REACHED();
-// 	return 0;
-// }
+/*********************************************/
 
 

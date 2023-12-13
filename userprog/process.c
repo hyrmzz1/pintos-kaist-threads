@@ -186,7 +186,6 @@ __do_fork (void *aux) {
 	}
 	current->fd_idx = parent->fd_idx;
 	sema_up(&current->fork_sema);
-
 	if_.R.rax = 0;
 	
 
@@ -303,7 +302,8 @@ process_wait (tid_t child_tid UNUSED) {
 	int exit_status = child->exit_status;
 	list_remove(&child->chlid_elem);
 	sema_up(&child->free_sema);
-
+	//printf("!!!!remove->%d!!!!", thread_current()->tid);	//test
+	//printf("!!!!remove!!!!");	//test
 	return exit_status;
 }
 
@@ -327,6 +327,8 @@ process_exit (void) {
 
 	process_cleanup ();
 	sema_up(&curr->wait_sema);
+	//printf("!!!!exit%d!!!!", thread_current()->tid);	//test
+	//printf("!!!!exit!!!!");	//test
 	sema_down(&curr->free_sema);
 }
 
