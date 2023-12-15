@@ -95,7 +95,10 @@ syscall_init (void) {
 void check_addr(const uint64_t* tmp_addr){
 
 	struct thread * cur = thread_current();
-	if(tmp_addr == NULL || !is_user_vaddr(tmp_addr) || pml4_get_page(cur->pml4, tmp_addr) == NULL)
+	// if(tmp_addr == NULL || !is_user_vaddr(tmp_addr) || pml4_get_page(cur->pml4, tmp_addr) == NULL)
+	// 	exit(-1);
+
+	if(pml4_get_page(cur->pml4, tmp_addr) == NULL)
 		exit(-1);
 }
 
