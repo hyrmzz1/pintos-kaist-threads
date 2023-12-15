@@ -9,6 +9,7 @@
 #include "intrinsic.h"
 #include "userprog/process.h"
 #include "filesys/filesys.h"
+#include "filesys/file.h"
 #include "threads/vaddr.h"
 #include "threads/mmu.h"
 
@@ -55,6 +56,8 @@ unsigned tell (int fd);
 void close (int fd);
 int dup2 (int oldfd, int newfd);
 void check_address (void *addr);
+const int STDIN = 0;
+const int STDOUT = 1;
 
 void
 syscall_init (void) {
@@ -206,14 +209,25 @@ open (const char *file) {
 /* fd로서 열려있는 파일의 크기 반환 (바이트 단위) */
 int
 filesize (int fd) {
-
+	struct file *open_file = process_get_file(fd);	// fd 이용하여 파일 객체 주소 리턴 -> 이거 열려있는 파일인가?
+	if(open_file)
+		return file_length(open_file);
+	else	// 파일 존재하지 않으면
+		return -1;
 }
 
 /* buffer 안에 fd로 열려있는 파일로부터 size 바이트 읽고, 실제 읽은 바이트 수 반환 */
 int
 read (int fd, void *buffer, unsigned size) {
-	// 파일 끝에서 읽기 시도 => 0 반환
-	// 파일 읽기 실패 (파일 끝인 경우 아님) => -1 반환
+	check_address(buffer);	// 주소값 유효한지 확인	(파라미터로는 포인터인 버퍼 넣기)
+	if (fd < 0 || fd >= FD_LIMIT)	// fd 범위 체킹
+		return -1;
+	struct thread *curr = thread_current();
+	struct file *fileobj = curr->fd_table[fd];
+	if (fileobj == NULL)	// 파일 읽기 실패 (파일 끝인 경우 아님)
+		return -1;
+
+	int read_size = file_read(fileobj, buffer, size);
 }
 
 /* buffer에서 open file fd로부터 size 바이트 쓰기 */

@@ -258,7 +258,7 @@ int process_add_file (struct file *f){
 
 /* 프로세스의 파일 디스크립터 테이블 검색해 파일 객체의 주소 리턴 */
 struct file *process_get_file (int fd){
-	if(fd>FD_LIMIT || fd < 0)
+	if(fd > FD_LIMIT || fd < 0 || fd == NULL)
 		return NULL;
 
 	struct thread *curr = thread_current();	
@@ -267,16 +267,16 @@ struct file *process_get_file (int fd){
 
 /* 파일 디스크립터에 해당하는 파일 닫고 해당 엔트리 초기화 */
 void process_close_file (int fd){
-	if(fd>FD_LIMIT || fd < 0)
+	if(fd>FD_LIMIT || fd < 2)
 		return NULL;
 
 	/* fd에 해당하는 파일 닫음 */
-	struct file * fileobj = thread_current()->fd_table[fd];
-	if(thread_current()->fd_table[fd] == NULL)	// 테이블에서 제외
+	struct file *fileobj = thread_current()->fd_table[fd];
+	if(fileobj == NULL)	// 테이블에서 제외
 		return;
-	thread_current()->fd_table[fd] = NULL;
+	fileobj = NULL;
 	file_close(fileobj);	// fd table 해당 엔트리 초기화 (객체 삭제) (메모리 누수 예방 위함)
-}
+}	// 좀 다르다
 
 /* Free the current process's resources. */
 static void
